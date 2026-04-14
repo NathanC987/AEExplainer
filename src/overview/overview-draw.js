@@ -21,6 +21,26 @@ const svgPaddings = overviewConfig.svgPaddings;
 const gapRatio = overviewConfig.gapRatio;
 const classLists = overviewConfig.classLists;
 const formater = d3.format('.4f');
+const headingMainFontSize = 15;
+const headingDimFontSize = 15;
+const headingCompactFontSize = 14;
+const bottleneckMainFontSize = 17;
+const bottleneckDimFontSize = 17;
+const bottleneckCompactFontSize = 16;
+const detailedHeadingToModelGap = 35;
+const compactHeadingToModelGap = 25;
+const bottleneckFeatureGapScale = 0.35;
+const bottleneckLabelToBoxGap = 7;
+const defaultBarTopOffset = 8;
+const bottleneckBarHeightRatio = 0.46;
+const bottleneckValueBoxWidthRatio = 1.45;
+const defaultBarHeightRatio = 1 / 4;
+const bottleneckValueGap = 6;
+const defaultValueGap = 10;
+const bottleneckOutputValueFontSize = 15;
+const defaultOutputValueFontSize = 9;
+const bottleneckOutputTextFontSize = 13;
+const defaultOutputTextFontSize = 11;
 const clampNonNegative = (value) => Math.max(0, Number(value) || 0);
 const toUnitValue = (value) => {
   let normalized = Number(value);
@@ -69,11 +89,11 @@ detailedModeStore.subscribe( value => {detailedMode = value;} )
 export const drawOutput = (d, i, g, range) => {
   let image = g[i];
   let colorScale = layerColorScales[d.type];
+  let curLayerIndex = cnn.findIndex(layer =>
+    layer[0] && layer[0].layerName === d.layerName);
 
   if (d.type === 'input') {
     colorScale = colorScale[d.index];
-  } else if (d.type === 'sigmoid' || d.type === 'output') {
-    colorScale = layerColorScales.input[0];
   } else if (colorScale === undefined) {
     colorScale = layerColorScales.conv;
   }
@@ -99,8 +119,24 @@ export const drawOutput = (d, i, g, range) => {
       let color = undefined;
       if (d.type === 'input' || d.type === 'fc' ) {
         color = d3.rgb(colorScale(1 - toUnitValue(d.output[row][column])));
-      } else if (d.type === 'sigmoid' || d.type === 'output') {
-        color = d3.rgb(colorScale(1 - toUnitValue(d.output[row][column])));
+      } else if (d.type === 'output') {
+        let normalized = Number(d.output[row][column]);
+        normalized = Number.isFinite(normalized) ? normalized : 0;
+        normalized = Math.max(0, Math.min(1, normalized));
+        color = d3.rgb(colorScale(1 - normalized));
+      } else if (d.type === 'sigmoid') {
+        let layerMinMax = (cnnLayerMinMax || [])[curLayerIndex] || {};
+        let minVal = Number(layerMinMax.min);
+        let maxVal = Number(layerMinMax.max);
+        if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) {
+          let safeRange = Math.abs(Number(range)) || 1;
+          minVal = -safeRange / 2;
+          maxVal = safeRange / 2;
+        }
+        let maxAbs = Math.max(Math.abs(minVal), Math.abs(maxVal), 1e-6);
+        let normalized = (d.output[row][column] + maxAbs) / (2 * maxAbs);
+        normalized = Math.max(0, Math.min(1, normalized));
+        color = d3.rgb(colorScale(normalized));
       } else {
         let safeRange = Math.abs(Number(range)) || 1;
         let normalized = (d.output[row][column] + safeRange / 2) / safeRange;
@@ -152,26 +188,29 @@ const drawOutputScore = (d, i, g, scale) => {
     let minVal = d3.min(values);
     let maxVal = d3.max(values);
     let maxAbs = Math.max(Math.abs(minVal || 0), Math.abs(maxVal || 0), 1e-6);
-    let halfBarSpan = nodeLength / 2;
     let value = Number(d.output) || 0;
-    let barLength = clampNonNegative((Math.abs(value) / maxAbs) * halfBarSpan);
     let zeroX = +group.select('text.output-text').attr('x');
+    let boxWidth = nodeLength * bottleneckValueBoxWidthRatio;
+    let normalized = (value + maxAbs) / (2 * maxAbs);
+    normalized = Math.max(0, Math.min(1, normalized));
+    let fillColor = d3.rgb(layerColorScales.conv(normalized));
+    let luminance = (0.299 * fillColor.r + 0.587 * fillColor.g + 0.114 * fillColor.b) / 255;
+    let valueColor = luminance < 0.58 ? '#F7F7F7' : '#1F1F1F';
 
     group.select('line.output-zero-line')
-      .attr('x1', zeroX)
-      .attr('x2', zeroX)
-      .style('opacity', 0.35);
+      .style('opacity', 0);
 
     group.select('rect.output-rect')
       .transition('output')
       .delay(300)
       .duration(700)
       .ease(d3.easeCubicInOut)
-      .attr('x', value >= 0 ? zeroX : zeroX - barLength)
-      .attr('width', barLength)
-      .style('fill', value >= 0 ? '#6F6F6F' : '#4E4E4E');
+      .attr('x', zeroX - boxWidth / 2)
+      .attr('width', boxWidth)
+      .style('fill', fillColor.formatRgb());
 
     group.select('text.output-value')
+      .style('fill', valueColor)
       .text(d3.format('.3f')(value));
     return;
   }
@@ -502,6 +541,14 @@ export const drawCNN = (width, height, cnnGroup, nodeMouseOverHandler,
       (curLayer.length + 1);
     vSpaceAroundGapStore.set(vSpaceAroundGap);
 
+    let layerGap = vSpaceAroundGap;
+    if (curLayer[0].layerName === 'bottleneck') {
+      layerGap *= bottleneckFeatureGapScale;
+    }
+    let packedLayerHeight = curLayer.length * nodeLength +
+      (curLayer.length + 1) * layerGap;
+    let layerTopOffset = (height - packedLayerHeight) / 2;
+
     let nodeGroups = layerGroup.selectAll('g.node-group')
       .data(curLayer, d => d.index)
       .enter()
@@ -518,7 +565,7 @@ export const drawCNN = (width, height, cnnGroup, nodeMouseOverHandler,
         // Not using transform on the group object because of a decade old
         // bug on webkit (safari)
         // https://bugs.webkit.org/show_bug.cgi?id=23113
-        let top = i * nodeLength + (i + 1) * vSpaceAroundGap;
+        let top = i * nodeLength + (i + 1) * layerGap + layerTopOffset;
         top += svgPaddings.top;
         nodeCoordinate[l].push({x: left, y: top});
         return `layer-${l}-node-${i}`
@@ -544,6 +591,18 @@ export const drawCNN = (width, height, cnnGroup, nodeMouseOverHandler,
         .attr('height', nodeLength)
         .attr('x', left)
         .attr('y', (d, i) => nodeCoordinate[l][i].y);
+
+      // Always-visible map border for all feature maps.
+      nodeGroups.append('rect')
+        .attr('class', 'map-border')
+        .attr('width', nodeLength)
+        .attr('height', nodeLength)
+        .attr('x', left)
+        .attr('y', (d, i) => nodeCoordinate[l][i].y)
+        .style('fill', 'none')
+        .style('stroke', edgeInitColor)
+        .style('stroke-width', 0.9)
+        .style('pointer-events', 'none');
       
       // Add a rectangle to show the border
       nodeGroups.append('rect')
@@ -553,7 +612,7 @@ export const drawCNN = (width, height, cnnGroup, nodeMouseOverHandler,
         .attr('x', left)
         .attr('y', (d, i) => nodeCoordinate[l][i].y)
         .style('fill', 'none')
-        .style('stroke', 'gray')
+        .style('stroke', edgeInitColor)
         .style('stroke-width', 1)
         .classed('hidden', true);
     } else {
@@ -561,38 +620,88 @@ export const drawCNN = (width, height, cnnGroup, nodeMouseOverHandler,
         .attr('class', 'output-zero-line')
         .attr('x1', left + nodeLength / 2)
         .attr('x2', left + nodeLength / 2)
-        .attr('y1', (d, i) => nodeCoordinate[l][i].y + nodeLength / 2 + 8)
-        .attr('y2', (d, i) => nodeCoordinate[l][i].y + nodeLength / 2 + 8 + nodeLength / 4)
+        .attr('y1', (d, i) => {
+          let nodeCenterY = nodeCoordinate[l][i].y + nodeLength / 2;
+          let barHeight = d.layerName === 'bottleneck'
+            ? nodeLength * bottleneckBarHeightRatio
+            : nodeLength * defaultBarHeightRatio;
+          let barTop = d.layerName === 'bottleneck'
+            ? nodeCenterY - barHeight / 2
+            : nodeCenterY + defaultBarTopOffset;
+          return barTop;
+        })
+        .attr('y2', (d, i) => {
+          let nodeCenterY = nodeCoordinate[l][i].y + nodeLength / 2;
+          let barHeight = d.layerName === 'bottleneck'
+            ? nodeLength * bottleneckBarHeightRatio
+            : nodeLength * defaultBarHeightRatio;
+          let barTop = d.layerName === 'bottleneck'
+            ? nodeCenterY - barHeight / 2
+            : nodeCenterY + defaultBarTopOffset;
+          return barTop + barHeight;
+        })
         .style('stroke', '#9E9E9E')
-        .style('stroke-width', 0.7)
+        .style('stroke-width', d => d.layerName === 'bottleneck' ? 1.1 : 0.7)
         .style('opacity', 0);
 
       nodeGroups.append('rect')
         .attr('class', 'output-rect')
         .attr('x', left + nodeLength / 2)
-        .attr('y', (d, i) => nodeCoordinate[l][i].y + nodeLength / 2 + 8)
-        .attr('height', nodeLength / 4)
+        .attr('y', (d, i) => {
+          let nodeCenterY = nodeCoordinate[l][i].y + nodeLength / 2;
+          let barHeight = d.layerName === 'bottleneck'
+            ? nodeLength * bottleneckBarHeightRatio
+            : nodeLength * defaultBarHeightRatio;
+          return d.layerName === 'bottleneck'
+            ? nodeCenterY - barHeight / 2
+            : nodeCenterY + defaultBarTopOffset;
+        })
+        .attr('height', d => d.layerName === 'bottleneck'
+          ? nodeLength * bottleneckBarHeightRatio
+          : nodeLength * defaultBarHeightRatio)
         .attr('width', 0)
-        .style('fill', 'gray');
+        .style('fill', d => d.layerName === 'bottleneck' ? '#5E5E5E' : 'gray');
       nodeGroups.append('text')
         .attr('class', 'output-text')
         .attr('x', d => d.layerName === 'bottleneck' ? left + nodeLength / 2 : left)
-        .attr('y', (d, i) => nodeCoordinate[l][i].y + nodeLength / 2)
+        .attr('y', (d, i) => {
+          if (d.layerName !== 'bottleneck') {
+            return nodeCoordinate[l][i].y + nodeLength / 2;
+          }
+          let nodeCenterY = nodeCoordinate[l][i].y + nodeLength / 2;
+          let barHeight = nodeLength * bottleneckBarHeightRatio;
+          let barTop = nodeCenterY - barHeight / 2;
+          return barTop - bottleneckLabelToBoxGap;
+        })
         .style('text-anchor', d => d.layerName === 'bottleneck' ? 'middle' : 'start')
         .style('dominant-baseline', 'middle')
-        .style('font-size', '11px')
+        .style('font-size', d => `${d.layerName === 'bottleneck' ? bottleneckOutputTextFontSize : defaultOutputTextFontSize}px`)
+        .style('font-weight', '400')
         .style('fill', 'black')
-        .style('opacity', 0.5)
+        .style('opacity', d => d.layerName === 'bottleneck' ? 0.72 : 0.5)
         .text((d, i) => classLists[i] === undefined ? `z${i}` : classLists[i]);
 
       nodeGroups.append('text')
         .attr('class', 'output-value')
         .attr('x', left + nodeLength / 2)
-        .attr('y', (d, i) => nodeCoordinate[l][i].y + nodeLength / 2 + 8 + nodeLength / 4 + 10)
+        .attr('y', (d, i) => {
+          let nodeCenterY = nodeCoordinate[l][i].y + nodeLength / 2;
+          let barHeight = d.layerName === 'bottleneck'
+            ? nodeLength * bottleneckBarHeightRatio
+            : nodeLength * defaultBarHeightRatio;
+          let barTop = d.layerName === 'bottleneck'
+            ? nodeCenterY - barHeight / 2
+            : nodeCenterY + defaultBarTopOffset;
+          let valueGap = d.layerName === 'bottleneck' ? bottleneckValueGap : defaultValueGap;
+          return d.layerName === 'bottleneck'
+            ? barTop + barHeight / 2
+            : barTop + barHeight + valueGap;
+        })
         .style('text-anchor', 'middle')
-        .style('dominant-baseline', 'hanging')
-        .style('font-size', '9px')
-        .style('fill', '#444')
+        .style('dominant-baseline', d => d.layerName === 'bottleneck' ? 'middle' : 'hanging')
+        .style('font-size', d => `${d.layerName === 'bottleneck' ? bottleneckOutputValueFontSize : defaultOutputValueFontSize}px`)
+        .style('font-weight', d => d.layerName === 'bottleneck' ? '700' : '400')
+        .style('fill', d => d.layerName === 'bottleneck' ? '#1F1F1F' : '#444')
         .text(d => d3.format('.3f')(Number(d.output) || 0));
       
       // Add annotation text to tell readers the exact output probability
@@ -644,6 +753,12 @@ export const drawCNN = (width, height, cnnGroup, nodeMouseOverHandler,
 
   let svgHeight = Number(d3.select('#cnn-svg').style('height').replace('px', '')) + 150;
   let scroll = new SmoothScroll('a[href*="#"]', {offset: -svgHeight});
+  let modelTopY = d3.min(nodeCoordinate
+    .filter(layer => layer && layer[0])
+    .map(layer => layer[0].y));
+  if (!Number.isFinite(modelTopY)) {
+    modelTopY = svgPaddings.top;
+  }
   
   let detailedLabels = svg.selectAll('g.layer-detailed-label')
     .data(layerNames)
@@ -654,7 +769,7 @@ export const drawCNN = (width, height, cnnGroup, nodeMouseOverHandler,
     .classed('hidden', !detailedMode)
     .attr('transform', (d, i) => {
       let x = nodeCoordinate[i][0].x + nodeLength / 2;
-      let y = Math.max(8, svgPaddings.top - 30);
+      let y = modelTopY - detailedHeadingToModelGap;
       return `translate(${x}, ${y})`;
     })
     .style('cursor', d => d.name.includes('output') ? 'default' : 'help')
@@ -677,13 +792,14 @@ export const drawCNN = (width, height, cnnGroup, nodeMouseOverHandler,
     .style('opacity', 0.7)
     .style('dominant-baseline', 'middle')
     .append('tspan')
-    .style('font-size', '12px')
+    .style('font-size', d => `${d.name === 'bottleneck' ? bottleneckMainFontSize : headingMainFontSize}px`)
+    .style('font-weight', d => d.name === 'bottleneck' ? '800' : '700')
     .text(d => d.name)
     .append('tspan')
-    .style('font-size', '8px')
+    .style('font-size', d => `${d.name === 'bottleneck' ? bottleneckDimFontSize : headingDimFontSize}px`)
     .style('font-weight', 'normal')
     .attr('x', 0)
-    .attr('dy', '1.5em')
+    .attr('dy', '1.2em')
     .text(d => d.dimension);
   
   let labels = svg.selectAll('g.layer-label')
@@ -695,7 +811,7 @@ export const drawCNN = (width, height, cnnGroup, nodeMouseOverHandler,
     .classed('hidden', detailedMode)
     .attr('transform', (d, i) => {
       let x = nodeCoordinate[i][0].x + nodeLength / 2;
-      let y = Math.max(12, svgPaddings.top - 22);
+      let y = modelTopY - compactHeadingToModelGap;
       return `translate(${x}, ${y})`;
     })
     .style('cursor', d => d.name.includes('output') ? 'default' : 'help')
@@ -717,6 +833,8 @@ export const drawCNN = (width, height, cnnGroup, nodeMouseOverHandler,
   labels.append('text')
     .style('dominant-baseline', 'middle')
     .style('opacity', 0.8)
+    .style('font-size', d => `${d.name === 'bottleneck' ? bottleneckCompactFontSize : headingCompactFontSize}px`)
+    .style('font-weight', d => d.name === 'bottleneck' ? '800' : '700')
     .text(d => {
       if (d.name.includes('conv')) { return 'conv' }
       if (d.name.includes('relu')) { return 'relu' }
@@ -959,22 +1077,10 @@ export const updateCNNLayerRanges = () => {
   // Module scale follows local scale in AE mode.
   let cnnLayerRangesComponent = [...cnnLayerRangesLocal];
 
-  let scalarLayers = cnn.filter(layer => layer[0].output.length === undefined);
-  let scalarValues = scalarLayers.flatMap(layer => layer.map(node => node.output));
-  let outputLayer = cnn[cnn.length - 1] || [];
-  let outputExtents = outputLayer.map(node => getExtent(node.output));
-  let outputMax = 255;
-  if (outputExtents.length > 0) {
-    outputMax = d3.max(outputExtents.map(ext => ext[1]));
-  } else if (scalarValues.length > 0) {
-    outputMax = d3.max(scalarValues);
-  }
-  outputMax = Math.max(1, outputMax);
-
   cnnLayerRanges.local = cnnLayerRangesLocal;
   cnnLayerRanges.module = cnnLayerRangesComponent;
   cnnLayerRanges.global = cnnLayerRangesGlobal;
-  cnnLayerRanges.output = [0, outputMax];
+  cnnLayerRanges.output = [0, 1];
 
   cnnLayerRangesStore.set(cnnLayerRanges);
   cnnLayerMinMaxStore.set(cnnLayerMinMax);

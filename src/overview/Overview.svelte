@@ -65,6 +65,7 @@
   const gapRatio = overviewConfig.gapRatio;
   const overlayRectOffset = overviewConfig.overlayRectOffset;
   const classLists = overviewConfig.classLists;
+  const headingCanvasTopPadding = 30;
 
   // Shared properties
   let needRedraw = [undefined, undefined];
@@ -198,6 +199,147 @@
   let isExitedFromDetailedView = true;
   let isExitedFromCollapse = true;
   let customImageURL = null;
+  let detailViewAnchor = {
+    mode: 'none',
+    previousLayerIndex: -1,
+    previousNodeIndex: -1,
+    currentLayerIndex: -1,
+    currentNodeIndex: -1,
+    preferRight: true,
+  };
+
+  const getNodeImageRect = (layerIndex, nodeIndex) => {
+    const imageNode = svg
+      .select(`g#layer-${layerIndex}-node-${nodeIndex}`)
+      .select('image.node-image')
+      .node();
+    return imageNode ? imageNode.getBoundingClientRect() : null;
+  };
+
+  const getIntermediateImageRect = (nodeIndex) => {
+    const imageNode = svg
+      .select('g.intermediate-layer')
+      .select(`g.intermediate-node[node-index="${nodeIndex}"]`)
+      .select('image')
+      .node();
+    return imageNode ? imageNode.getBoundingClientRect() : null;
+  };
+
+  const updateDetailViewPosition = () => {
+    if (detailViewAnchor.mode === 'none') {
+      return;
+    }
+
+    const detailview = document.getElementById('detailview');
+    if (!detailview) {
+      return;
+    }
+
+    let previousRect = null;
+    let currentRect = null;
+    if (detailViewAnchor.mode === 'layer-pair') {
+      previousRect = getNodeImageRect(
+        detailViewAnchor.previousLayerIndex,
+        detailViewAnchor.previousNodeIndex
+      );
+      currentRect = getNodeImageRect(
+        detailViewAnchor.currentLayerIndex,
+        detailViewAnchor.currentNodeIndex
+      );
+    } else if (detailViewAnchor.mode === 'conv-pair') {
+      previousRect = getNodeImageRect(
+        detailViewAnchor.previousLayerIndex,
+        detailViewAnchor.previousNodeIndex
+      );
+      currentRect = getIntermediateImageRect(detailViewAnchor.currentNodeIndex);
+    }
+
+    if (!previousRect || !currentRect) {
+      return;
+    }
+
+    const margin = 12;
+    const viewportPad = 8;
+    const detailWidth = detailview.offsetWidth || 486;
+    const detailHeight = detailview.offsetHeight || 250;
+
+    // Keep the detail panel clear of both maps: right of current or left of previous.
+    const rightX = currentRect.right + margin;
+    const leftX = previousRect.left - detailWidth - margin;
+    const canPlaceRight = rightX + detailWidth <= window.innerWidth - viewportPad;
+    const canPlaceLeft = leftX >= viewportPad;
+
+    let left = rightX;
+    if (detailViewAnchor.preferRight) {
+      if (!canPlaceRight && canPlaceLeft) {
+        left = leftX;
+      }
+    } else if (canPlaceLeft) {
+      left = leftX;
+    } else if (!canPlaceRight && canPlaceLeft) {
+      left = leftX;
+    }
+
+    const pairMidY =
+      (Math.min(previousRect.top, currentRect.top) +
+        Math.max(previousRect.bottom, currentRect.bottom)) / 2;
+    let top = pairMidY - detailHeight / 2;
+    top = Math.max(viewportPad, Math.min(top, window.innerHeight - detailHeight - viewportPad));
+    left = Math.max(viewportPad, Math.min(left, window.innerWidth - detailWidth - viewportPad));
+
+    detailview.style.position = 'fixed';
+    detailview.style.left = `${left}px`;
+    detailview.style.top = `${top}px`;
+  };
+
+  const scheduleDetailViewPosition = () => {
+    requestAnimationFrame(() => requestAnimationFrame(updateDetailViewPosition));
+  };
+
+  const pinDetailViewToLayerPair = (
+    previousLayerIndex,
+    previousNodeIndex,
+    currentLayerIndex,
+    currentNodeIndex,
+    preferRight
+  ) => {
+    detailViewAnchor = {
+      mode: 'layer-pair',
+      previousLayerIndex,
+      previousNodeIndex,
+      currentLayerIndex,
+      currentNodeIndex,
+      preferRight,
+    };
+    scheduleDetailViewPosition();
+  };
+
+  const pinDetailViewToConvPair = (
+    previousLayerIndex,
+    nodeIndex,
+    preferRight
+  ) => {
+    detailViewAnchor = {
+      mode: 'conv-pair',
+      previousLayerIndex,
+      previousNodeIndex: nodeIndex,
+      currentLayerIndex: -1,
+      currentNodeIndex: nodeIndex,
+      preferRight,
+    };
+    scheduleDetailViewPosition();
+  };
+
+  const clearDetailViewAnchor = () => {
+    detailViewAnchor = {
+      mode: 'none',
+      previousLayerIndex: -1,
+      previousNodeIndex: -1,
+      currentLayerIndex: -1,
+      currentNodeIndex: -1,
+      preferRight: true,
+    };
+  };
 
   const activateOnKeyboard = (event, handler) => {
     if (disableControl) return;
@@ -302,26 +444,7 @@
           .style('opacity', 1);
       }
       
-      // Dynamically position the detail view
-      let wholeSvg = d3.select('#cnn-svg');
-      let svgYMid = +wholeSvg.style('height').replace('px', '') / 2;
-      let svgWidth = +wholeSvg.style('width').replace('px', '');
-      let detailViewTop = 100 + svgYMid - 250 / 2;
-      let positionX = intermediateLayerPosition[Object.keys(layerIndexDict)[curLayerIndex]];
-
-      let posX = 0;
-      if (curLayerIndex > 6) {
-        posX = (positionX - svgPaddings.left) / 2;
-        posX = svgPaddings.left + posX - 486 / 2;
-      } else {
-        posX = (svgWidth + svgPaddings.right - positionX) / 2;
-        posX = positionX + posX - 486 / 2;
-      }
-
-      const detailview = document.getElementById('detailview');
-      detailview.style.top = `${detailViewTop}px`;
-      detailview.style.left = `${posX}px`;
-      detailview.style.position = 'absolute';
+      pinDetailViewToConvPair(curLayerIndex - 1, d.index, curLayerIndex <= 6);
 
       detailedViewNum = d.index;
 
@@ -482,6 +605,7 @@
   }
 
   const quitActPoolDetailView = () => {
+    clearDetailViewAnchor();
     isInActPoolDetailView = false;
     actPoolDetailViewNodeIndex = -1;
 
@@ -641,30 +765,10 @@
   }
 
   const enterDetailView = (curLayerIndex, i) => {
+    pinDetailViewToLayerPair(curLayerIndex - 1, i, curLayerIndex, i, curLayerIndex <= 6);
     isInActPoolDetailView = true;
     actPoolDetailViewNodeIndex = i;
     actPoolDetailViewLayerIndex = curLayerIndex;
-
-    // Dynamically position the detail view
-    let wholeSvg = d3.select('#cnn-svg');
-    let svgYMid = +wholeSvg.style('height').replace('px', '') / 2;
-    let svgWidth = +wholeSvg.style('width').replace('px', '');
-    let detailViewTop = 100 + svgYMid - 260 / 2;
-
-    let posX = 0;
-    if (curLayerIndex > 5) {
-      posX = nodeCoordinate[curLayerIndex - 1][0].x + 50;
-      posX = posX / 2 - 500 / 2;
-    } else {
-      posX = (svgWidth - nodeCoordinate[curLayerIndex][0].x - nodeLength) / 2;
-      posX = nodeCoordinate[curLayerIndex][0].x + nodeLength + posX - 500 / 2;
-
-    }
-
-    const detailview = document.getElementById('detailview');
-    detailview.style.top = `${detailViewTop}px`;
-    detailview.style.left = `${posX}px`;
-    detailview.style.position = 'absolute';
 
     // Hide all edges
     let unimportantEdges = svg.select('g.edge-group')
@@ -766,6 +870,7 @@
   }
 
   const quitIntermediateView = (curLayerIndex, g, i) => {
+    clearDetailViewAnchor();
     // If it is the softmax detail view, quit that view first
     if (isInSoftmax) {
       svg.select('.logit-layer').remove();
@@ -880,6 +985,9 @@
       if (!nodeCoordinate[i] || !nodeCoordinate[i][0]) { continue; }
       moveLayerX({layerIndex: i, targetX: nodeCoordinate[i][0].x,
         disable:false, delay:500, opacity: 1});
+
+      svg.selectAll(`g#layer-label-${i}, g#layer-detailed-label-${i}`)
+        .style('opacity', null);
     }
 
     let anchorLayerIndex = Math.max(0, layerCount - 2);
@@ -1154,18 +1262,22 @@
   let selectedI = 4;
 
   onMount(async () => {
+    const handleViewportChange = () => updateDetailViewPosition();
+    window.addEventListener('scroll', handleViewportChange, true);
+    window.addEventListener('resize', handleViewportChange);
+
     // Create SVG
     wholeSvg = d3.select(overviewComponent)
       .select('#cnn-svg');
     svg = wholeSvg.append('g')
       .attr('class', 'main-svg')
-      .attr('transform', `translate(${svgPaddings.left}, 0)`);
+      .attr('transform', `translate(${svgPaddings.left}, ${headingCanvasTopPadding})`);
     svgStore.set(svg);
 
     width = Number(wholeSvg.style('width').replace('px', '')) -
       svgPaddings.left - svgPaddings.right;
     height = Number(wholeSvg.style('height').replace('px', '')) -
-      svgPaddings.top - svgPaddings.bottom;
+      svgPaddings.top - svgPaddings.bottom - headingCanvasTopPadding;
 
     let cnnGroup = svg.append('g')
       .attr('class', 'cnn-group');
@@ -1256,6 +1368,11 @@
     // Create and draw the CNN view
     drawCNN(width, height, cnnGroup, nodeMouseOverHandler,
       nodeMouseLeaveHandler, nodeClickHandler);
+
+    return () => {
+      window.removeEventListener('scroll', handleViewportChange, true);
+      window.removeEventListener('resize', handleViewportChange);
+    };
   })
 
   const detailedButtonClicked = () => {
@@ -1380,6 +1497,7 @@
 
   function handleExitFromDetiledConvView(event) {
     if (event.detail.text) {
+      clearDetailViewAnchor();
       detailedViewNum = undefined;
       svg.select(`rect#underneath-gateway-${selectedNodeIndex}`)
         .style('opacity', 0);

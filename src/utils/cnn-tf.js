@@ -275,10 +275,6 @@ const constructCNNFromOutputs = (allOutputs, model, inputImageTensor) => {
         // Add nodes into this layer
         for (let i = 0; i < outputs.length; i++) {
           let curOutput = outputs[i];
-          if (curLayerType === nodeType.OUTPUT) {
-            // Keep internal inference in [0,1], but show reconstructed pixels on [0,255].
-            curOutput = scaleMatrixBy(curOutput, 255);
-          }
 
           let node = new Node(layer.name, i, curLayerType, bias, curOutput);
 

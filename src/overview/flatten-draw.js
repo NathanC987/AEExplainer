@@ -20,11 +20,13 @@ const layerColorScales = overviewConfig.layerColorScales;
 const nodeLength = overviewConfig.nodeLength;
 const plusSymbolRadius = overviewConfig.plusSymbolRadius;
 const intermediateColor = overviewConfig.intermediateColor;
+const edgeInitColor = overviewConfig.edgeInitColor;
 const kernelRectLength = overviewConfig.kernelRectLength;
 const svgPaddings = overviewConfig.svgPaddings;
 const gapRatio = overviewConfig.gapRatio;
 const classList = overviewConfig.classLists;
 const formater = d3.format('.4f');
+const fadedLayerOpacity = 0.15;
 
 // Shared variables
 let svg = undefined;
@@ -144,19 +146,19 @@ const logitCircleMouseOverHandler = (i) => {
   // Highlight the associated edges
   logitLayerLower.selectAll(`.softmax-abstract-edge-${i}`)
     .style('stroke-width', 0.8)
-    .style('stroke', '#E0E0E0');
+    .style('stroke', edgeInitColor);
 
   logitLayerLower.selectAll(`.softmax-edge-${i}`)
     .style('stroke-width', 1)
-    .style('stroke', '#E0E0E0');
+    .style('stroke', edgeInitColor);
   
   logitLayerLower.selectAll(`.logit-output-edge-${i}`)
     .style('stroke-width', 3)
-    .style('stroke', '#E0E0E0');
+    .style('stroke', edgeInitColor);
 
   logitLayer.selectAll(`.logit-output-edge-${i}`)
     .style('stroke-width', 3)
-    .style('stroke', '#E0E0E0');
+    .style('stroke', edgeInitColor);
 }
 
 const logitCircleMouseLeaveHandler = (i) => {
@@ -188,19 +190,19 @@ const logitCircleMouseLeaveHandler = (i) => {
   // Restore the associated edges
   logitLayerLower.selectAll(`.softmax-abstract-edge-${i}`)
     .style('stroke-width', 0.2)
-    .style('stroke', '#EDEDED');
+    .style('stroke', edgeInitColor);
 
   logitLayerLower.selectAll(`.softmax-edge-${i}`)
     .style('stroke-width', 0.2)
-    .style('stroke', '#F1F1F1');
+    .style('stroke', edgeInitColor);
 
   logitLayerLower.selectAll(`.logit-output-edge-${i}`)
     .style('stroke-width', 1.2)
-    .style('stroke', '#E5E5E5');
+    .style('stroke', edgeInitColor);
   
   logitLayer.selectAll(`.logit-output-edge-${i}`)
     .style('stroke-width', 1.2)
-    .style('stroke', '#E5E5E5');
+    .style('stroke', edgeInitColor);
 }
 
 // This function is binded to the detail view in Overview.svelte
@@ -305,7 +307,7 @@ const drawLogitLayer = (arg) => {
     .attr('y1', nodeCoordinate[curLayerIndex - 1][selectedI].y + nodeLength / 2)
     .attr('y2', nodeCoordinate[curLayerIndex - 1][selectedI].y + nodeLength / 2)
     .style('fill', 'none')
-    .style('stroke', '#EAEAEA')
+    .style('stroke', edgeInitColor)
     .style('stroke-width', '1.2')
     .lower();
 
@@ -354,7 +356,7 @@ const drawLogitLayer = (arg) => {
               y: nodeCoordinate[curLayerIndex][curI].y + nodeLength / 2},
             index: factoredF,
             weight: cnn.flatten[factoredF].outputLinks[curI].weight,
-            color: '#F1F1F1',
+            color: edgeInitColor,
             width: 0.5,
             opacity: 1,
             class: `softmax-edge-${curI}`
@@ -371,7 +373,7 @@ const drawLogitLayer = (arg) => {
           target: {x: intermediateX2 - moveX,
             y: nodeCoordinate[curLayerIndex][curI].y + nodeLength / 2},
           index: -1,
-          color: '#EDEDED',
+          color: edgeInitColor,
           width: 0.5,
           opacity: 1,
           class: `softmax-abstract-edge-${curI}`
@@ -408,7 +410,7 @@ const drawLogitLayer = (arg) => {
       .datum({fill: gappedColorScale(layerColorScales.weight,
         flattenRange, cnn[layerIndexDict['output']][curI].bias, 0.35)})
       .style('pointer-events', 'none')
-      .style('fill', '#E5E5E5');
+      .style('fill', edgeInitColor);
 
     symbolClone.attr('transform', `translate(${symbolX},
       ${nodeCoordinate[curLayerIndex][curI].y + nodeLength / 2})`);
@@ -443,14 +445,14 @@ const drawLogitLayer = (arg) => {
       .attr('class', `logit-output-edge-${curI}`)
       .attr('d', outputEdgeD1)
       .style('fill', 'none')
-      .style('stroke', '#EAEAEA')
+      .style('stroke', edgeInitColor)
       .style('stroke-width', '1.2');
 
     let outputEdge2 = logitLayerLower.append('path')
       .attr('class', `logit-output-edge-${curI}`)
       .attr('d', outputEdgeD2)
       .style('fill', 'none')
-      .style('stroke', '#EAEAEA')
+      .style('stroke', edgeInitColor)
       .style('stroke-width', '1.2');
     
     let outputEdgeLength1 = outputEdge1.node().getTotalLength();
@@ -971,7 +973,7 @@ const softmaxClicked = (arg) => {
           .attr('x2', outputX + moveX)
           .attr('y2', outputY)
           .style('stroke-width', 1.2)
-          .style('stroke', '#E5E5E5')
+          .style('stroke', edgeInitColor)
           .style('opacity', 0);
         
         newLine.transition('softmax')
@@ -1023,19 +1025,43 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
     targetX: curLayerX,
     disable: true,
     delay: 0,
-    opacity: 0.2,
+    opacity: fadedLayerOpacity,
     specialIndex: i
   });
 
   for (let li = 0; li < curLayerIndex - 1; li++) {
     let leftTargetX = nodeCoordinate[li][0].x - leftShift;
-    moveLayerX({layerIndex: li, targetX: leftTargetX, disable: true, delay: 0});
+    moveLayerX({
+      layerIndex: li,
+      targetX: leftTargetX,
+      disable: true,
+      delay: 0
+    });
+
+    svg.selectAll(`g#layer-label-${li}, g#layer-detailed-label-${li}`)
+      .filter((d, ni, nodes) => !d3.select(nodes[ni]).classed('hidden'))
+      .style('opacity', fadedLayerOpacity);
   }
 
   for (let li = curLayerIndex + 1; li < cnn.length; li++) {
     let targetX = nodeCoordinate[li][0].x + rightShift;
-    moveLayerX({layerIndex: li, targetX: targetX, disable: true, delay: 0});
+    moveLayerX({
+      layerIndex: li,
+      targetX: targetX,
+      disable: true,
+      delay: 0,
+      opacity: fadedLayerOpacity
+    });
+
+    svg.selectAll(`g#layer-label-${li}, g#layer-detailed-label-${li}`)
+      .filter((d, ni, nodes) => !d3.select(nodes[ni]).classed('hidden'))
+      .style('opacity', fadedLayerOpacity);
   }
+
+  // Keep expanded layers' headings fully visible.
+  svg.selectAll(`g#layer-label-${curLayerIndex - 1}, g#layer-detailed-label-${curLayerIndex - 1},
+    g#layer-label-${curLayerIndex}, g#layer-detailed-label-${curLayerIndex}`)
+    .style('opacity', null);
 
   const stops = [
     {offset: '0%', color: 'rgb(250, 250, 250)', opacity: 1},
@@ -1179,7 +1205,7 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
     .attr('class', 'maxpool-to-flatten')
     .attr('d', e => linkGen({source: e.source, target: e.target}))
     .style('fill', 'none')
-    .style('stroke', '#D7D7D7')
+    .style('stroke', edgeInitColor)
     .style('stroke-width', 0.8)
     .style('opacity', 1);
 
@@ -1217,7 +1243,7 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
       target: {x: nodeCoordinate[curLayerIndex][i].x - 2, y: symbolY}
     }))
     .style('fill', 'none')
-    .style('stroke', '#D8D8D8')
+    .style('stroke', edgeInitColor)
     .style('stroke-width', 1.2);
 
   const preRange = cnnLayerRanges[selectedScaleLevel][curLayerIndex - 1] || 1;

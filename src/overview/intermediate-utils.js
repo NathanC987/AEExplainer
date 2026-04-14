@@ -1,6 +1,6 @@
 /* global d3 */
 
-import { svgStore, vSpaceAroundGapStore } from '../stores.js';
+import { svgStore, vSpaceAroundGapStore, nodeCoordinateStore } from '../stores.js';
 import { overviewConfig } from '../config.js';
 
 // Configs
@@ -8,6 +8,9 @@ const layerColorScales = overviewConfig.layerColorScales;
 const nodeLength = overviewConfig.nodeLength;
 const intermediateColor = overviewConfig.intermediateColor;
 const svgPaddings = overviewConfig.svgPaddings;
+const bottleneckValueBoxWidthRatio = 1.45;
+const detailedHeadingToModelGap = 35;
+const compactHeadingToModelGap = 25;
 
 // Shared variables
 let svg = undefined;
@@ -15,6 +18,9 @@ svgStore.subscribe( value => {svg = value;} )
 
 let vSpaceAroundGap = undefined;
 vSpaceAroundGapStore.subscribe( value => {vSpaceAroundGap = value;} )
+
+let nodeCoordinate = undefined;
+nodeCoordinateStore.subscribe( value => {nodeCoordinate = value;} )
 
 /**
  * Move one layer horizontally
@@ -39,6 +45,12 @@ export const moveLayerX = (arg) => {
   let onEndFunc = arg.onEndFunc;
   let transitionName = arg.transitionName === undefined ? 'move' : arg.transitionName;
   let duration = arg.duration === undefined ? 500 : arg.duration;
+  let modelTopY = d3.min((nodeCoordinate || [])
+    .filter(layer => layer && layer[0])
+    .map(layer => layer[0].y));
+  if (!Number.isFinite(modelTopY)) {
+    modelTopY = svgPaddings.top;
+  }
 
   // Move the selected layer
   let curLayer = svg.select(`g#cnn-layer-group-${layerIndex}`);
@@ -62,12 +74,25 @@ export const moveLayerX = (arg) => {
       .attr('x', targetX);
 
     d3.select(g[i])
+      .select('rect.map-border')
+      .transition(transitionName)
+      .ease(d3.easeCubicInOut)
+      .delay(delay)
+      .duration(duration)
+      .attr('x', targetX);
+
+    d3.select(g[i])
       .select('rect.output-rect')
       .transition(transitionName)
       .ease(d3.easeCubicInOut)
       .delay(delay)
       .duration(duration)
-      .attr('x', targetX + nodeLength / 2);
+      .attr('x', d => {
+        if (d.layerName === 'bottleneck') {
+          return targetX + nodeLength / 2 - (nodeLength * bottleneckValueBoxWidthRatio) / 2;
+        }
+        return targetX + nodeLength / 2;
+      });
 
     d3.select(g[i])
       .select('text.output-text')
@@ -90,6 +115,14 @@ export const moveLayerX = (arg) => {
       d3.select(g[i])
         .select('image')
         .style('opacity', opacity);
+
+      d3.select(g[i])
+        .select('rect.map-border')
+        .style('opacity', opacity);
+
+      d3.select(g[i])
+        .select('rect.bounding')
+        .style('opacity', opacity);
     }
   });
   
@@ -101,7 +134,7 @@ export const moveLayerX = (arg) => {
     .duration(duration)
     .attr('transform', () => {
       let x = targetX + nodeLength / 2;
-      let y = Math.max(12, svgPaddings.top - 22);
+      let y = modelTopY - compactHeadingToModelGap;
       return `translate(${x}, ${y})`;
     })
     .on('end', onEndFunc);
@@ -113,7 +146,7 @@ export const moveLayerX = (arg) => {
     .duration(duration)
     .attr('transform', () => {
       let x = targetX + nodeLength / 2;
-      let y = Math.max(8, svgPaddings.top - 30);
+      let y = modelTopY - detailedHeadingToModelGap;
       return `translate(${x}, ${y})`;
     })
     .on('end', onEndFunc);

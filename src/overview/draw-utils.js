@@ -2,6 +2,8 @@ import { overviewConfig } from '../config.js';
 
 // Configs
 const nodeLength = overviewConfig.nodeLength;
+const bottleneckBarHeightRatio = 0.46;
+const bottleneckValueBoxWidthRatio = 1.45;
 
 /**
  * Compute the [minimum, maximum] of a 1D or 2D array.
@@ -97,13 +99,39 @@ export const getInputKnot = (point) => {
  * @param {[object]} cnn Constructed CNN model
  */
 export const getLinkData = (nodeCoordinate, cnn) => {
+  const getBoxCenterY = (point) => {
+    return point.y + nodeLength / 2;
+  };
+
+  const getNodeOutputKnot = (point, node) => {
+    if (node && node.layerName === 'bottleneck') {
+      let boxWidth = nodeLength * bottleneckValueBoxWidthRatio;
+      return {
+        x: point.x + nodeLength / 2 + boxWidth / 2,
+        y: getBoxCenterY(point)
+      };
+    }
+    return getOutputKnot(point);
+  };
+
+  const getNodeInputKnot = (point, node) => {
+    if (node && node.layerName === 'bottleneck') {
+      let boxWidth = nodeLength * bottleneckValueBoxWidthRatio;
+      return {
+        x: point.x + nodeLength / 2 - boxWidth / 2,
+        y: getBoxCenterY(point)
+      };
+    }
+    return getInputKnot(point);
+  };
+
   let linkData = [];
   // Create links backward (starting for the first conv layer)
   for (let l = 1; l < cnn.length; l++) {
     for (let n = 0; n < cnn[l].length; n++) {
       let isBottleneck = cnn[l][n].layerName === 'bottleneck';
       let isUnflatten = cnn[l][n].layerName === 'unflatten';
-      let curTarget = getInputKnot(nodeCoordinate[l][n]);
+      let curTarget = getNodeInputKnot(nodeCoordinate[l][n], cnn[l][n]);
       for (let p = 0; p < cnn[l][n].inputLinks.length; p++) {
         // Handle hidden flatten/fc layers in AE overview.
         let inputNodeIndex = cnn[l][n].inputLinks[p].source.index;
@@ -119,7 +147,7 @@ export const getLinkData = (nodeCoordinate, cnn) => {
           // Hidden fc layer sits between bottleneck and unflatten.
           inputNodeIndex = inputNodeIndex % cnn[l - 1].length;
         }
-        let curSource = getOutputKnot(nodeCoordinate[l-1][inputNodeIndex]);
+        let curSource = getNodeOutputKnot(nodeCoordinate[l-1][inputNodeIndex], cnn[l - 1][inputNodeIndex]);
         let curWeight = cnn[l][n].inputLinks[p].weight;
         linkData.push({
           source: curSource,

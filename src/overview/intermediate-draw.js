@@ -27,6 +27,7 @@ const intermediateColor = overviewConfig.intermediateColor;
 const kernelRectLength = overviewConfig.kernelRectLength;
 const svgPaddings = overviewConfig.svgPaddings;
 const gapRatio = overviewConfig.gapRatio;
+const fadedLayerOpacity = 0.15;
 const overlayRectOffset = overviewConfig.overlayRectOffset;
 const formater = d3.format('.4f');
 let isEndOfAnimation = false;
@@ -1219,7 +1220,7 @@ export const drawConv1 = (curLayerIndex, d, i, width, height,
 
   // Move the selected layer
   moveLayerX({layerIndex: curLayerIndex, targetX: targetX, disable: true,
-    delay: 0, opacity: 0.15, specialIndex: i});
+    delay: 0, opacity: fadedLayerOpacity, specialIndex: i});
 
   // Compute the gap in the right shrink region
   let rightStart = targetX + nodeLength + hSpaceAroundGap * gapRatio;
@@ -1228,7 +1229,24 @@ export const drawConv1 = (curLayerIndex, d, i, width, height,
   // Move the right layers
   for (let i = curLayerIndex + 1; i < cnn.length; i++) {
     let curX = rightStart + (i - (curLayerIndex + 1)) * (nodeLength + rightGap);
-    moveLayerX({layerIndex: i, targetX: curX, disable: true, delay: 0});
+    moveLayerX({
+      layerIndex: i,
+      targetX: curX,
+      disable: true,
+      delay: 0,
+      opacity: 0.15
+    });
+  }
+
+  // Keep left-side non-expanded layers (e.g., relu_1) visibly dimmed too.
+  for (let i = 0; i < curLayerIndex - 1; i++) {
+    moveLayerX({
+      layerIndex: i,
+      targetX: nodeCoordinate[i][0].x,
+      disable: true,
+      delay: 0,
+      opacity: 0.15
+    });
   }
 
   // Add an overlay gradient and rect
@@ -1370,8 +1388,38 @@ export const drawConv2 = (curLayerIndex, d, i, width, height,
   // Move the right layers
   for (let i = curLayerIndex + 1; i < cnn.length; i++) {
     let curX = rightStart + (i - (curLayerIndex + 1)) * (nodeLength + rightGap);
-    moveLayerX({layerIndex: i, targetX: curX, disable: true, delay: 0});
+    moveLayerX({
+      layerIndex: i,
+      targetX: curX,
+      disable: true,
+      delay: 0,
+      opacity: fadedLayerOpacity
+    });
+
+    svg.selectAll(`g#layer-label-${i}, g#layer-detailed-label-${i}`)
+      .filter((d, ni, nodes) => !d3.select(nodes[ni]).classed('hidden'))
+      .style('opacity', fadedLayerOpacity);
   }
+
+  // Fade left-side non-expanded layers (e.g. relu_1).
+  for (let i = 0; i < curLayerIndex - 1; i++) {
+    moveLayerX({
+      layerIndex: i,
+      targetX: nodeCoordinate[i][0].x,
+      disable: true,
+      delay: 0,
+      opacity: fadedLayerOpacity
+    });
+
+    svg.selectAll(`g#layer-label-${i}, g#layer-detailed-label-${i}`)
+      .filter((d, ni, nodes) => !d3.select(nodes[ni]).classed('hidden'))
+      .style('opacity', fadedLayerOpacity);
+  }
+
+  // Keep the two expanded layers' headings fully visible.
+  svg.selectAll(`g#layer-label-${curLayerIndex - 1}, g#layer-detailed-label-${curLayerIndex - 1},
+    g#layer-label-${curLayerIndex}, g#layer-detailed-label-${curLayerIndex}`)
+    .style('opacity', null);
 
   // Add an overlay
   let stops = [{offset: '0%', color: 'rgb(250, 250, 250)', opacity: 0.85},
