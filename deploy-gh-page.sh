@@ -2,6 +2,16 @@
 set -euo pipefail
 
 REPO_NAME="${1:-AEExplainer}"
+
+# Avoid repeated SSH passphrase prompts during gh-pages publish.
+if ! ssh-add -l >/dev/null 2>&1; then
+	eval "$(ssh-agent -s)" >/dev/null
+fi
+if ! ssh-add -l 2>/dev/null | grep -q "id_ed25519"; then
+	echo "Loading SSH key ~/.ssh/id_ed25519 for deploy..."
+	ssh-add ~/.ssh/id_ed25519
+fi
+
 PUBLIC_URL="/${REPO_NAME}" npm run build
 
 mkdir -p ./dist
