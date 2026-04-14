@@ -30,8 +30,17 @@ COMMIT_SHA="$(git rev-parse --short HEAD)"
 DEPLOY_DIR="$(mktemp -d)"
 cleanup() {
 	git worktree remove "${DEPLOY_DIR}" --force >/dev/null 2>&1 || true
+	git worktree prune >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+
+# If a previous run crashed, gh-pages may still be registered as an active
+# worktree. Remove/prune it so repeated deploys do not fail.
+EXISTING_GH_PAGES_WORKTREE="$(git worktree list --porcelain | awk '/^worktree / {wt=$2} /^branch refs\/heads\/gh-pages$/ {print wt}')"
+if [[ -n "${EXISTING_GH_PAGES_WORKTREE}" ]]; then
+	git worktree remove "${EXISTING_GH_PAGES_WORKTREE}" --force >/dev/null 2>&1 || true
+	git worktree prune >/dev/null 2>&1 || true
+fi
 
 if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
 	git worktree add -B gh-pages "${DEPLOY_DIR}" origin/gh-pages >/dev/null
