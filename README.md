@@ -55,6 +55,79 @@ Build production bundle:
 npm run build
 ```
 
+## Host on GitHub Pages
+
+This project is static, so GitHub Pages is a good default hosting option.
+
+1) Confirm repository settings
+
+- Repository name is expected to be AEExplainer.
+- Default branch is main.
+- Push all latest changes to main.
+
+2) Deploy
+
+Run:
+
+```bash
+npm install
+npm run deploy:gh
+```
+
+What this does:
+
+- Builds with PUBLIC_URL=/AEExplainer
+- Copies static assets into dist
+- Adds .nojekyll
+- Publishes dist to the gh-pages branch
+
+3) Enable Pages in GitHub
+
+- Go to Settings -> Pages.
+- Source: Deploy from a branch.
+- Branch: gh-pages, folder: /(root).
+- Save.
+
+Your site URL will be:
+
+- https://<your-username>.github.io/AEExplainer/
+
+4) Verify production paths
+
+- Open the site and confirm model/data files load under /AEExplainer/assets/...
+- Check the browser network tab for:
+  - bundle.js
+  - bundle.css
+  - assets/data/autoencoder-model.json
+  - assets/data/latent-embedding-umap-12000.json
+
+5) Redeploy after changes
+
+```bash
+npm run deploy:gh
+```
+
+## Performance and Responsiveness Checklist
+
+For best speed and broad compatibility on GitHub Pages:
+
+- Keep static assets in public/assets and avoid runtime API dependencies.
+- Use production build for deploys (already done by deploy:gh).
+- Keep model and embedding files reasonably sized.
+- Prefer compressed numeric precision in large JSON files when possible.
+- Test responsive layout at desktop, tablet, and mobile widths.
+- Validate first-load performance on a cold browser cache.
+- Use Chrome Lighthouse and watch these metrics:
+  - LCP under 2.5s on typical broadband
+  - CLS near 0
+  - TBT as low as possible
+
+Optional optimization ideas:
+
+- Downsample latent points for low-end devices and offer a high-detail toggle.
+- Lazy-load heavy panels only when they enter viewport.
+- Move very large data files behind progressive loading.
+
 ## Data Files Required by the UI
 
 The app expects these files under [public/assets/data](public/assets/data):

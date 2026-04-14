@@ -21,6 +21,7 @@
     "dev": "rollup -c -w",
     "start": "sirv public --single",
     "start:dev": "sirv public --single --dev --port 3000",
-    "deploy": "npx"
+    "deploy": "npx",
+    "deploy:gh": "bash ./deploy-gh-page.sh"
   }
 }
