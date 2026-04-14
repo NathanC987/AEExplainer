@@ -44,7 +44,7 @@ else
 	)
 fi
 
-rm -rf "${DEPLOY_DIR}"/* "${DEPLOY_DIR}"/.[!.]* "${DEPLOY_DIR}"/..?* 2>/dev/null || true
+find "${DEPLOY_DIR}" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 cp -r ./dist/. "${DEPLOY_DIR}"/
 
 (
