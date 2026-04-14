@@ -5,6 +5,7 @@ REPO_NAME="${1:-AEExplainer}"
 PUBLIC_URL="/${REPO_NAME}" npm run build
 
 mkdir -p ./dist
+cp ./public/index.html ./dist/index.html
 cp -r ./public/assets ./dist
 cp -r ./public/bundle* ./dist
 cp -r ./public/global.css ./dist
