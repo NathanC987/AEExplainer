@@ -27,4 +27,35 @@ touch ./dist/.nojekyll
 cp ./dist/index.html ./dist/404.html
 
 COMMIT_SHA="$(git rev-parse --short HEAD)"
-npx gh-pages -m "Deploy ${COMMIT_SHA}" -d ./dist
+DEPLOY_DIR="$(mktemp -d)"
+cleanup() {
+	git worktree remove "${DEPLOY_DIR}" --force >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+	git worktree add -B gh-pages "${DEPLOY_DIR}" origin/gh-pages >/dev/null
+else
+	git worktree add --detach "${DEPLOY_DIR}" >/dev/null
+	(
+		cd "${DEPLOY_DIR}"
+		git checkout --orphan gh-pages >/dev/null
+		git rm -rf . >/dev/null 2>&1 || true
+	)
+fi
+
+rm -rf "${DEPLOY_DIR}"/* "${DEPLOY_DIR}"/.[!.]* "${DEPLOY_DIR}"/..?* 2>/dev/null || true
+cp -r ./dist/. "${DEPLOY_DIR}"/
+
+(
+	cd "${DEPLOY_DIR}"
+	touch .nojekyll
+	git add -A
+	if git diff --cached --quiet; then
+		echo "No deploy changes to publish."
+	else
+		git commit -m "Deploy ${COMMIT_SHA}" >/dev/null
+		git push origin gh-pages
+		echo "Published to gh-pages."
+	fi
+)
