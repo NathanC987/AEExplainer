@@ -1,5 +1,5 @@
 <script>
-	import ConvolutionAnimator from './ConvolutionAnimator.svelte';
+  import ConvolutionAnimatorConv1 from './ConvolutionAnimatorConv1.svelte';
   import { singleConv } from '../utils/cnn.js';
   import { createEventDispatcher } from 'svelte';
 
@@ -9,21 +9,27 @@
   export let colorScale = d3.interpolateRdBu;
   export let isInputInputLayer = false;
   export let isExited = false;
-  // export let output;
-  
+  export let bias = 0;
+
   const dispatch = createEventDispatcher();
   let stride = 1;
   const dilation = 1;
   var isPaused = false;
-  var outputFinal = singleConv(input, kernel, stride);
+
+  const addScalarToMatrix = (mat, scalar) => {
+    let safeScalar = Number(scalar) || 0;
+    return mat.map(row => row.map(value => (Number(value) || 0) + safeScalar));
+  }
+
+  var outputFinal = addScalarToMatrix(singleConv(input, kernel, stride), bias);
   $: if (stride > 0) {
-    try { 
-      outputFinal = singleConv(input, kernel, stride);
+    try {
+      outputFinal = addScalarToMatrix(singleConv(input, kernel, stride), bias);
     } catch {
-      console.log("Cannot handle stride of " + stride);
+      console.log('Cannot handle stride of ' + stride);
     }
   }
-  
+
   function handleClickPause() {
     isPaused = !isPaused;
   }
@@ -31,7 +37,7 @@
   function handleScroll() {
     let svgHeight = Number(d3.select('#cnn-svg').style('height').replace('px', '')) + 150;
     let scroll = new SmoothScroll('a[href*="#"]', {offset: -svgHeight});
-    let anchor = document.querySelector(`#article-convolution`);
+    let anchor = document.querySelector('#article-convolution');
     scroll.animateScroll(anchor);
   }
 
@@ -117,22 +123,6 @@
 {#if !isExited}
   <div class="container" id="detailview-container">
 
-    <!-- old stride input -->
-    <!-- <div class="columns is-mobile">
-      <div class="column is-half is-offset-one-quarter">
-        <div class="field is-grouped">
-          <p class="control is-expanded">
-            <input class="input" type="text" placeholder="Stride" bind:value={stride} />
-          </p>
-          <p class="control">
-            <button class="button is-success" on:click={handleClickPause}>
-              Toggle Movement
-            </button>
-          </p>
-        </div>
-      </div>
-    </div> -->
-
     <div class="box">
 
       <div class="control-pannel">
@@ -174,8 +164,9 @@
       </div>
 
       <div class="container is-centered">
-        <ConvolutionAnimator on:message={handlePauseFromInteraction} 
-          kernel={kernel} image={input} output={outputFinal} 
+        <ConvolutionAnimatorConv1 on:message={handlePauseFromInteraction}
+          kernel={kernel} image={input} output={outputFinal}
+          bias={bias}
           stride={stride} dilation={dilation} isPaused={isPaused}
           dataRange={dataRange} colorScale={colorScale}
           isInputInputLayer={isInputInputLayer} />

@@ -57,9 +57,16 @@ export function getMatrixSliceFromOutputHighlights(matrix, highlights) {
 
 // Edit these values to change size of low-level conv visualization.
 export function getVisualizationSizeConstraint(imageLength) {
-  let sizeOfGrid = 150;
-  let maxSizeOfGridCell = 20;
+  let sizeOfGrid = 165;
+  let maxSizeOfGridCell = 24;
   return sizeOfGrid / imageLength > maxSizeOfGridCell ? maxSizeOfGridCell : sizeOfGrid / imageLength;
+}
+
+export function getMiddleVisualizationSizeConstraint(imageLength) {
+  const baseConstraint = getVisualizationSizeConstraint(imageLength);
+  const middleScale = 1.4;
+  const maxMiddleCellSize = 34;
+  return Math.min(maxMiddleCellSize, baseConstraint * middleScale);
 }
 
 export function getDataRange(image) {

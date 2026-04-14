@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { array1d, getMatrixSliceFromOutputHighlights,
-    compute_input_multiplies_with_weight, getVisualizationSizeConstraint,
+    compute_input_multiplies_with_weight, getVisualizationSizeConstraint, getMiddleVisualizationSizeConstraint,
     generateOutputMappings, getMatrixSliceFromInputHighlights, gridData
   } from './DetailviewUtils.js';
   import Dataview from './Dataview.svelte';
@@ -16,6 +16,8 @@
 
   const dispatch = createEventDispatcher();
   const padding = 0;
+  let middleConstraint;
+  $: middleConstraint = getMiddleVisualizationSizeConstraint(kernelLength);
   let padded_input_size = image.length + padding * 2;
   $: padded_input_size = image.length + padding * 2;
 
@@ -27,8 +29,8 @@
       testInputMatrixSlice[i].push(0)
     }
   }
-  testInputMatrixSlice = gridData(testInputMatrixSlice)
-  let testOutputMatrixSlice = gridData([[0]]);
+  testInputMatrixSlice = gridData(testInputMatrixSlice, middleConstraint)
+  let testOutputMatrixSlice = gridData([[0]], middleConstraint);
 
   let inputHighlights = [];
   let outputHighlights = array1d(output.length * output.length, (i) => true);
@@ -56,9 +58,9 @@
       outputHighlights[animatedH * output.length + animatedW] = true;
       inputHighlights = compute_input_multiplies_with_weight(animatedH, animatedW, padded_input_size, kernelLength, outputMappings, kernelLength)
       const inputMatrixSlice = getMatrixSliceFromInputHighlights(image, inputHighlights, kernelLength);
-      testInputMatrixSlice = gridData(inputMatrixSlice);
+      testInputMatrixSlice = gridData(inputMatrixSlice, middleConstraint);
       const outputMatrixSlice = getMatrixSliceFromOutputHighlights(output, outputHighlights);
-      testOutputMatrixSlice = gridData(outputMatrixSlice);
+      testOutputMatrixSlice = gridData(outputMatrixSlice, middleConstraint);
       counter++;
     }, 250)
   }
@@ -71,9 +73,9 @@
     outputHighlights[animatedH * output.length + animatedW] = true;
     inputHighlights = compute_input_multiplies_with_weight(animatedH, animatedW, padded_input_size, kernelLength, outputMappings, kernelLength)
     const inputMatrixSlice = getMatrixSliceFromInputHighlights(image, inputHighlights, kernelLength);
-    testInputMatrixSlice = gridData(inputMatrixSlice);
+    testInputMatrixSlice = gridData(inputMatrixSlice, middleConstraint);
     const outputMatrixSlice = getMatrixSliceFromOutputHighlights(output, outputHighlights);
-    testOutputMatrixSlice = gridData(outputMatrixSlice);
+    testOutputMatrixSlice = gridData(outputMatrixSlice, middleConstraint);
     isPaused = true;
     dispatch('message', {
       text: isPaused
@@ -105,15 +107,15 @@
       isKernelMath={false} constraint={getVisualizationSizeConstraint(image.length)} dataRange={dataRange} stride={stride}/>  
 </div>
 <div class="column has-text-centered">
-  <span>
-    max(
+  <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+    <span>max(</span>
     <Dataview data={testInputMatrixSlice} highlights={outputHighlights} isKernelMath={true} 
-      constraint={getVisualizationSizeConstraint(kernelLength)} dataRange={dataRange}/>
-    )
-    =
+      constraint={middleConstraint} dataRange={dataRange}/>
+    <span>)</span>
+    <span>=</span>
     <Dataview data={testOutputMatrixSlice} highlights={outputHighlights} isKernelMath={true} 
-      constraint={getVisualizationSizeConstraint(kernelLength)} dataRange={dataRange}/>
-  </span> 
+      constraint={middleConstraint} dataRange={dataRange}/>
+  </div> 
 </div>
 <div class="column has-text-centered">
   <div class="header-text">

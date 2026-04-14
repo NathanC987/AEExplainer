@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { array1d, getVisualizationSizeConstraint, gridData } from './DetailviewUtils.js';
+  import { array1d, getVisualizationSizeConstraint, getMiddleVisualizationSizeConstraint, gridData } from './DetailviewUtils.js';
   import Dataview from './Dataview.svelte';
 
   export let image;
@@ -10,11 +10,12 @@
   export let dataRange;
 
   const dispatch = createEventDispatcher();
+  const middleConstraint = getMiddleVisualizationSizeConstraint(factor);
 
   let inputHighlights = array1d(image.length * image.length, () => false);
   let outputHighlights = array1d(output.length * output.length, () => false);
-  let inputSlice = gridData([[0]]);
-  let outputSlice = gridData([[0, 0], [0, 0]]);
+  let inputSlice = gridData([[0]], middleConstraint);
+  let outputSlice = gridData([[0, 0], [0, 0]], middleConstraint);
   let interval;
   let counter = 0;
 
@@ -34,7 +35,7 @@
       }
     }
 
-    inputSlice = gridData([[image[animatedH][animatedW]]]);
+    inputSlice = gridData([[image[animatedH][animatedW]]], middleConstraint);
 
     let outPatch = [];
     for (let r = 0; r < factor; r++) {
@@ -44,7 +45,7 @@
       }
       outPatch.push(row);
     }
-    outputSlice = gridData(outPatch);
+    outputSlice = gridData(outPatch, middleConstraint);
   }
 
   const startAnimation = () => {
@@ -98,11 +99,11 @@
   <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
     <span>repeat(</span>
     <Dataview data={inputSlice} highlights={outputHighlights} isKernelMath={true}
-      constraint={20} dataRange={dataRange}/>
-    <span>) </span>
+      constraint={middleConstraint} dataRange={dataRange}/>
+    <span>)</span>
     <span>=</span>
     <Dataview data={outputSlice} highlights={outputHighlights} isKernelMath={true}
-      constraint={20} dataRange={dataRange}/>
+      constraint={middleConstraint} dataRange={dataRange}/>
   </div>
 </div>
 

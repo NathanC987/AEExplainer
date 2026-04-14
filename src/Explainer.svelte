@@ -1,5 +1,6 @@
 <script>
   import Overview from './overview/Overview.svelte';
+  import Article from './article/Article.svelte';
   import { cnnStore } from './stores.js';
 
   // Enum to control the displaying view
@@ -29,5 +30,6 @@
 </style>
 
 <div id='explainer'>
-    <Overview />
+  <Overview />
+  <Article />
 </div>

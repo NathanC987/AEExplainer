@@ -14,7 +14,7 @@
   let gridFinal;
   let legendFinal;
   const textConstraintDivisor = 2.6;
-  const multiplicationSymbolPadding = Math.floor(constraint / 3);
+  const multiplicationSymbolPadding = Math.floor(constraint / 4);
 
   let oldData = data;
   let oldKernel = kernel;
@@ -125,13 +125,55 @@
   // Draw the elementwise dot-product math.
   const redraw = () => {
     d3.select(gridFinal).selectAll("#grid > *").remove();
-    const constrainedSvgSize = kernel ? 2 * (data.length * constraint) + 2 : data.length * constraint + 2;
+    const valueTextSize = Math.max(13, Math.floor(constraint / textConstraintDivisor));
+    const operatorTextSize = Math.max(13, Math.floor(constraint / (textConstraintDivisor - 1)));
+    const compactGridScale = 1.82;
+    const operatorYOffsetFactor = 0.2;
+    const colStep = constraint * compactGridScale;
+    const rowStep = constraint * compactGridScale;
+    const baseCellX = (col) => multiplicationSymbolPadding + 1 + col * colStep;
+    const getCellY = (d) => 1 + d.row * rowStep;
+    const getCellCenterXByColBase = (col) => baseCellX(col) + constraint / 2;
+    const getOperatorXBase = (col) => {
+      let curCenter = getCellCenterXByColBase(col);
+      if (col < kernel.length - 1) {
+        let nextCenter = getCellCenterXByColBase(col + 1);
+        return (curCenter + nextCenter) / 2;
+      }
+      if (col > 0) {
+        let prevCenter = getCellCenterXByColBase(col - 1);
+        return curCenter + (curCenter - prevCenter) / 2;
+      }
+      return curCenter;
+    };
+    const leftContentEdge = baseCellX(0) - multiplicationSymbolPadding / 2;
+    const rightContentEdge = getOperatorXBase(kernel.length - 1) + operatorTextSize / 2;
+    const getOperatorX = (d) => {
+      let curCenter = getCellCenterXByCol(d.col);
+      if (d.col < kernel.length - 1) {
+        let nextCenter = getCellCenterXByCol(d.col + 1);
+        return (curCenter + nextCenter) / 2;
+      }
+      if (d.col > 0) {
+        let prevCenter = getCellCenterXByCol(d.col - 1);
+        return curCenter + (curCenter - prevCenter) / 2;
+      }
+      return curCenter;
+    };
+    const lastRowY = 1 + (data.length - 1) * rowStep;
+    const kernelSectionBottom = lastRowY + constraint + constraint / 2;
+    const constrainedSvgWidth = kernel ? 2 * (data.length * constraint) + 2 : data.length * constraint + 2;
+    const constrainedSvgHeight = Math.ceil(kernelSectionBottom + 2);
+    const contentWidth = rightContentEdge - leftContentEdge;
+    const xOffset = (constrainedSvgWidth - contentWidth) / 2 - leftContentEdge;
+    const getCellX = (d) => baseCellX(d.col) + xOffset;
+    const getCellCenterXByCol = (col) => getCellCenterXByColBase(col) + xOffset;
     var grid = d3.select(gridFinal).select("#grid")
-      .attr("width", constrainedSvgSize + "px")
-      .attr("height", constrainedSvgSize + "px")
+      .attr("width", constrainedSvgWidth + "px")
+      .attr("height", constrainedSvgHeight + "px")
       .append("svg")
-      .attr("width", constrainedSvgSize + "px")
-      .attr("height", constrainedSvgSize + "px")
+      .attr("width", constrainedSvgWidth + "px")
+      .attr("height", constrainedSvgHeight + "px")
     var row = grid.selectAll(".row")
       .data(data)
       .enter().append("g")
@@ -143,8 +185,8 @@
     // Draw cells for slice from input matrix.
     columns.append("rect")
       .attr("class","square")
-      .attr("x", function(d) { return d.x === 1 ? d.x + multiplicationSymbolPadding : d.x * 2 + multiplicationSymbolPadding})
-      .attr("y", function(d) { return d.y === 1 ? d.y : d.y * 2 })
+      .attr("x", function(d) { return getCellX(d); })
+      .attr("y", function(d) { return getCellY(d); })
       .attr("width", function(d) { return d.width; })
       .attr("height", function(d) { return d.height; })
       .style("opacity", 0.5)
@@ -161,8 +203,8 @@
     // Draw cells for the kernel.
     columns.append("rect")
       .attr("class","square")
-      .attr("x", function(d) { return d.x === 1 ? d.x + multiplicationSymbolPadding: d.x * 2 + multiplicationSymbolPadding})
-      .attr("y", function(d) { return d.y === 1 ? d.y + d.height : d.y * 2 + d.height })
+      .attr("x", function(d) { return getCellX(d); })
+      .attr("y", function(d) { return getCellY(d) + d.height; })
       .attr("width", function(d) { return d.width; })
       .attr("height", function(d) { return d.height / 2; })
       .style("opacity", 0.5)
@@ -180,9 +222,9 @@
     // Draw numbers from input matrix slice.
     texts.append("text")
       .attr("class","text")
-      .style("font-size", Math.floor(constraint / textConstraintDivisor) + "px")
-      .attr("x", function(d) { return d.x === 1 ? d.x + d.width / 2 + multiplicationSymbolPadding: d.x * 2 + d.width / 2 + multiplicationSymbolPadding})
-      .attr("y", function(d) { return d.y === 1 ? d.y + d.height / 2 : d.y * 2 + d.height / 2 })
+      .style("font-size", valueTextSize + "px")
+      .attr("x", function(d) { return getCellX(d) + d.width / 2; })
+      .attr("y", function(d) { return getCellY(d) + d.height / 2; })
       .style("fill", function(d) { 
         let normalizedValue = d.text;
         if (isInputLayer){
@@ -206,10 +248,10 @@
     // Draw 'x' to signify multiplication.
     texts.append("text")
       .attr("class","text")
-      .style("font-size", Math.floor(constraint / (textConstraintDivisor)) + "px")
+      .style("font-size", valueTextSize + "px")
       .attr('font-weight', 600)
-      .attr("x", function(d) { return d.x === 1 ? d.x + multiplicationSymbolPadding / 2: d.x * 2 + multiplicationSymbolPadding / 2})
-      .attr("y", function(d) { return d.y === 1 ? d.y + d.height + (d.height / 4) : d.y * 2 + d.height + (d.height / 4) })
+      .attr("x", function(d) { return getCellX(d) - multiplicationSymbolPadding / 2; })
+      .attr("y", function(d) { return getCellY(d) + d.height + (d.height * operatorYOffsetFactor); })
       .style("fill", "black")
       .style("text-anchor", "middle")
       .style("dominant-baseline", "middle")
@@ -217,9 +259,9 @@
     // Draw kernel values.
     texts.append("text")
       .attr("class","text")
-      .style("font-size", Math.floor(constraint / textConstraintDivisor) + "px")
-      .attr("x", function(d) { return d.x === 1 ? d.x + d.width / 2 + multiplicationSymbolPadding: d.x * 2 + d.width / 2 + multiplicationSymbolPadding})
-      .attr("y", function(d) { return d.y === 1 ? d.y + d.height + (d.height / 4) : d.y * 2 + d.height + (d.height / 4) })
+      .style("font-size", valueTextSize + "px")
+      .attr("x", function(d) { return getCellX(d) + d.width / 2; })
+      .attr("y", function(d) { return getCellY(d) + d.height + (d.height * operatorYOffsetFactor); })
       .style("fill", function(d) { 
         let normalizedValue = (kernel[d.row][d.col].text + kernelRange.range / 2) / kernelRange.range;
         const gap = 0.2;
@@ -236,9 +278,9 @@
     // Draw '+' to signify the summing of products except for the last kernel cell where '=' is drawn.
     texts.append("text")
       .attr("class","text")
-      .style("font-size", Math.floor(constraint / (textConstraintDivisor - 1)) + "px")
-      .attr("x", function(d) { return d.x === 1 ? d.x + d.width + d.width / 2 + multiplicationSymbolPadding: d.x * 2 + d.width + d.width / 2 + multiplicationSymbolPadding})
-      .attr("y", function(d) { return d.y === 1 ? d.y + d.height / 2 : d.y * 2 + d.height / 2 })
+      .style("font-size", operatorTextSize + "px")
+      .attr("x", function(d) { return getOperatorX(d); })
+      .attr("y", function(d) { return getCellY(d) + d.height / 2; })
       .style("text-anchor", "middle")
       .style("dominant-baseline", "middle")
       .text(function(d) { return d.row == kernel.length - 1 && d.col == kernel.length - 1 ? '=' : '+'; })

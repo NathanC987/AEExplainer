@@ -2,6 +2,7 @@
 	--outer-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
 	--outer-shadow-sm: 0 .125rem .25rem rgba(0,0,0,.075);
 	--outer-shadow-lg: 0 1rem 3rem rgba(0,0,0,.175);
+	--content-max-width: 100ch;
 	--red: rgb(255, 59, 48);
 	--blue: rgb(0, 122, 255);
 	--green: rgb(52, 199, 89);

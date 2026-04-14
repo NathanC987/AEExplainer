@@ -223,6 +223,63 @@ export const matrixSlice = (mat, xs, xe, ys, ye) => {
 }
 
 /**
+ * Get per-side zero padding for a conv2d operation.
+ * Supports numeric padding and string modes ('valid' / 'same').
+ */
+export const getPaddingForConv2D = (
+  inputSize,
+  kernelSize,
+  stride = 1,
+  padding = 'valid',
+  dilation = 1
+) => {
+  let safeInput = Math.max(1, Math.floor(Number(inputSize) || 1));
+  let safeKernel = Math.max(1, Math.floor(Number(kernelSize) || 1));
+  let safeStride = Math.max(1, Math.floor(Number(stride) || 1));
+  let safeDilation = Math.max(1, Math.floor(Number(dilation) || 1));
+  let kernelSpan = (safeKernel - 1) * safeDilation + 1;
+
+  if (typeof padding === 'number') {
+    let pad = Math.max(0, Math.floor(Number(padding) || 0));
+    return {top: pad, bottom: pad, left: pad, right: pad};
+  }
+
+  let mode = String(padding || 'valid').toLowerCase();
+  if (mode !== 'same') {
+    return {top: 0, bottom: 0, left: 0, right: 0};
+  }
+
+  let outSize = Math.ceil(safeInput / safeStride);
+  let totalPad = Math.max((outSize - 1) * safeStride + kernelSpan - safeInput, 0);
+  let before = Math.floor(totalPad / 2);
+  let after = totalPad - before;
+  return {top: before, bottom: after, left: before, right: after};
+}
+
+/**
+ * Zero-pad a square matrix according to per-side padding.
+ */
+export const padMatrix2D = (input, paddingInfo, fill = 0) => {
+  let top = Math.max(0, Math.floor(Number((paddingInfo || {}).top) || 0));
+  let bottom = Math.max(0, Math.floor(Number((paddingInfo || {}).bottom) || 0));
+  let left = Math.max(0, Math.floor(Number((paddingInfo || {}).left) || 0));
+  let right = Math.max(0, Math.floor(Number((paddingInfo || {}).right) || 0));
+
+  let height = input.length;
+  let width = input[0].length;
+  let paddedHeight = height + top + bottom;
+  let paddedWidth = width + left + right;
+  let padded = init2DArray(paddedHeight, paddedWidth, fill);
+
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      padded[r + top][c + left] = input[r][c];
+    }
+  }
+  return padded;
+}
+
+/**
  * Compute the maximum of a matrix.
  * @param {[[number]]} mat Matrix
  */
@@ -303,8 +360,7 @@ const getInputImageArray = (imgFile) => {
  * @param {int} stride Stride size
  * @param {int} padding Padding size
  */
-export const singleConv = (input, kernel, stride=1, padding=0) => {
-  // TODO: implement padding
+export const singleConv = (input, kernel, stride=1, padding=0, dilation=1) => {
 
   // Only support square input and kernel
   console.assert(input.length === input[0].length,
@@ -312,19 +368,38 @@ export const singleConv = (input, kernel, stride=1, padding=0) => {
   console.assert(kernel.length === kernel[0].length,
     'Conv kernel is not square');
 
-  let stepSize = (input.length - kernel.length) / stride + 1;
+  let safeStride = Math.max(1, Math.floor(Number(stride) || 1));
+  let safeDilation = Math.max(1, Math.floor(Number(dilation) || 1));
+  let paddingInfo = getPaddingForConv2D(
+    input.length,
+    kernel.length,
+    safeStride,
+    padding,
+    safeDilation
+  );
+  let paddedInput = padMatrix2D(input, paddingInfo, 0);
+  let kernelSpan = (kernel.length - 1) * safeDilation + 1;
+
+  let stepSize = (paddedInput.length - kernelSpan) / safeStride + 1;
+  stepSize = Math.max(0, Math.floor(stepSize));
 
   let result = init2DArray(stepSize, stepSize, 0);
 
   // Window sliding
   for (let r = 0; r < stepSize; r++) {
     for (let c = 0; c < stepSize; c++) {
-      let curWindow = matrixSlice(input, r * stride, r * stride + kernel.length,
-        c * stride, c * stride + kernel.length);
-      let dot = matrixDot(curWindow, kernel);
+      let dot = 0;
+      for (let kr = 0; kr < kernel.length; kr++) {
+        for (let kc = 0; kc < kernel[0].length; kc++) {
+          let inR = r * safeStride + kr * safeDilation;
+          let inC = c * safeStride + kc * safeDilation;
+          dot += paddedInput[inR][inC] * kernel[kr][kc];
+        }
+      }
       result[r][c] = dot;
     }
   }
+
   return result;
 }
 

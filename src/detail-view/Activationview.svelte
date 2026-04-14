@@ -86,7 +86,7 @@
   }
 
   .box {
-    padding: 5px 15px 10px 15px;
+    padding: 8px 18px 12px 18px;
   }
 
   .container {

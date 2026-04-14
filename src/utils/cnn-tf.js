@@ -198,6 +198,30 @@ const constructCNNFromOutputs = (allOutputs, model, inputImageTensor) => {
     // Construct this layer based on its layer type
     switch (curLayerType) {
       case nodeType.CONV: {
+        let layerConfig = typeof layer.getConfig === 'function' ? layer.getConfig() : {};
+        let stride = Array.isArray(layerConfig.strides) ? layerConfig.strides[0] : 1;
+        if (!Number.isFinite(stride)) {
+          stride = Array.isArray(layer.strides) ? layer.strides[0] : 1;
+        }
+        stride = Math.max(1, Number(stride) || 1);
+
+        let dilation = Array.isArray(layerConfig.dilationRate) ? layerConfig.dilationRate[0] : 1;
+        if (!Number.isFinite(dilation)) {
+          dilation = Array.isArray(layer.dilationRate) ? layer.dilationRate[0] : 1;
+        }
+        dilation = Math.max(1, Number(dilation) || 1);
+
+        let kernelSize = Array.isArray(layerConfig.kernelSize) ? layerConfig.kernelSize[0] : 3;
+        if (!Number.isFinite(kernelSize)) {
+          kernelSize = Array.isArray(layer.kernelSize) ? layer.kernelSize[0] : 3;
+        }
+        kernelSize = Math.max(1, Number(kernelSize) || 3);
+
+        let padding = String(layerConfig.padding || layer.padding || 'valid').toLowerCase();
+        if (padding !== 'same' && padding !== 'valid') {
+          padding = 'valid';
+        }
+
         let biases = layer.bias.val.arraySync();
         let weights = getConvWeightsByOutputInput(
           layer,
@@ -209,6 +233,12 @@ const constructCNNFromOutputs = (allOutputs, model, inputImageTensor) => {
         for (let i = 0; i < outputs.length; i++) {
           let node = new Node(layer.name, i, curLayerType, biases[i],
             outputs[i]);
+          node.convConfig = {
+            stride,
+            padding,
+            dilation,
+            kernelSize
+          };
 
           // Connect this node to all previous nodes (create links)
           // CONV layers have weights in links. Links are one-to-multiple.

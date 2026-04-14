@@ -23,13 +23,18 @@ import { overviewConfig } from '../config.js';
 const layerColorScales = overviewConfig.layerColorScales;
 const nodeLength = overviewConfig.nodeLength;
 const plusSymbolRadius = overviewConfig.plusSymbolRadius;
-const intermediateColor = overviewConfig.intermediateColor;
+const intermediateColor = '#6E6E6E';
 const kernelRectLength = overviewConfig.kernelRectLength;
 const svgPaddings = overviewConfig.svgPaddings;
 const gapRatio = overviewConfig.gapRatio;
 const fadedLayerOpacity = 0.15;
 const overlayRectOffset = overviewConfig.overlayRectOffset;
 const formater = d3.format('.4f');
+const headingMainFontSize = 15;
+const headingDimFontSize = 15;
+const headingCompactFontSize = 14;
+const detailedHeadingToModelGap = 35;
+const compactHeadingToModelGap = 25;
 let isEndOfAnimation = false;
 
 // Shared variables
@@ -182,7 +187,7 @@ const createIntermediateNode = (curLayerIndex, selectedI, groupLayer, x, y,
         .attr('x', i * stride)
         .attr('y', j * stride)
         .style('fill', 'var(--light-gray)')
-        .style('stroke', 'var(--light-gray)')
+        .style('stroke', 'none')
         .style('opacity', 1);
     }
   }
@@ -434,6 +439,12 @@ const drawIntermediateLayer = (curLayerIndex, leftX, rightX, rightStart,
 
   let intermediateX1 = leftX + nodeLength + intermediateGap;
   let intermediateX2 = intermediateX1 + nodeLength + intermediateGap * 1.5;
+  let modelTopY = d3.min((nodeCoordinate || [])
+    .filter(layer => layer && layer[0])
+    .map(layer => layer[0].y));
+  if (!Number.isFinite(modelTopY)) {
+    modelTopY = svgPaddings.top;
+  }
 
   let range = cnnLayerRanges[selectedScaleLevel][curLayerIndex];
   let colorScale = layerColorScales[d.type];
@@ -458,6 +469,10 @@ const drawIntermediateLayer = (curLayerIndex, leftX, rightX, rightStart,
 
   // Compute stride for the kernel animation
   let stride = kernelRectLength * 3; 
+  let convConfig = d.convConfig || {};
+  let convStride = Math.max(1, Number(convConfig.stride) || 1);
+  let convPadding = (convConfig.padding || 'valid');
+  let convDilation = Math.max(1, Number(convConfig.dilation) || 1);
 
   // Also add the overlay mask on the output node
   let outputY = nodeCoordinate[curLayerIndex][i].y;
@@ -477,7 +492,7 @@ const drawIntermediateLayer = (curLayerIndex, leftX, rightX, rightStart,
         .attr('x', i * stride)
         .attr('y', j * stride)
         .style('fill', 'var(--light-gray)')
-        .style('stroke', 'var(--light-gray)')
+        .style('stroke', 'none')
         .style('opacity', 1);
     }
   }
@@ -513,7 +528,8 @@ const drawIntermediateLayer = (curLayerIndex, leftX, rightX, rightStart,
     // Compute the intermediate value
     let inputMatrix = cnn[curLayerIndex - 1][ni].output;
     let kernelMatrix = cnn[curLayerIndex][i].inputLinks[ni].weight;
-    let interMatrix = singleConv(inputMatrix, kernelMatrix);
+    let interMatrix = singleConv(inputMatrix, kernelMatrix,
+      convStride, convPadding, convDilation);
 
     // Compute the intermediate layer min max
     intermediateMinMax.push(getExtent(interMatrix));
@@ -744,22 +760,50 @@ const drawIntermediateLayer = (curLayerIndex, leftX, rightX, rightStart,
     .attr('class', 'layer-intermediate-label layer-label')
     .attr('transform', () => {
       let x = intermediateX1 + nodeLength / 2;
-      let y = Math.max(12, svgPaddings.top - 22);
+      let y = modelTopY - compactHeadingToModelGap;
       return `translate(${x}, ${y})`;
     })
     .classed('hidden', detailedMode)
     .append('text')
     .style('text-anchor', 'middle')
     .style('dominant-baseline', 'middle')
-    .style('font-weight', 800)
+    .style('font-size', `${headingCompactFontSize}px`)
+    .style('font-weight', 700)
     .style('opacity', '0.8')
     .text('intermediate');
-  
+
+  // Draw the detailed model layer label
+  intermediateLayer.append('g')
+    .attr('class', 'layer-intermediate-label layer-detailed-label')
+    .attr('transform', () => {
+      let x = intermediateX1 + nodeLength / 2;
+      let y = modelTopY - detailedHeadingToModelGap;
+      return `translate(${x}, ${y})`;
+    })
+    .classed('hidden', !detailedMode)
+    .append('text')
+    .style('text-anchor', 'middle')
+    .style('dominant-baseline', 'middle')
+    .style('opacity', '0.7')
+    .append('tspan')
+    .style('font-size', `${headingMainFontSize}px`)
+    .style('font-weight', 700)
+    .text('intermediate')
+    .append('tspan')
+    .style('font-size', `${headingDimFontSize}px`)
+    .style('font-weight', 'normal')
+    .attr('x', 0)
+    .attr('dy', '1.2em')
+    .text(`(${cnn[curLayerIndex][0].output.length},
+      ${cnn[curLayerIndex][0].output[0].length},
+      ${cnn[curLayerIndex].length})`);
+
+  // Keep the animation control aligned near the compact heading line.
   intermediateLayer.append('g')
     .attr('class', 'animation-control')
     .attr('transform', () => {
       let x = intermediateX1 + nodeLength / 2;
-      let y = Math.max(8, svgPaddings.top - 31);
+      let y = modelTopY - compactHeadingToModelGap - 9;
       return `translate(${x}, ${y})`;
     })
     .on('click', () => animationButtonClicked(curLayerIndex))
@@ -770,31 +814,6 @@ const drawIntermediateLayer = (curLayerIndex, leftX, rightX, rightStart,
     .attr('y', 0)
     .attr('height', 13)
     .attr('width', 13);
-
-  // Draw the detailed model layer label
-  intermediateLayer.append('g')
-    .attr('class', 'layer-intermediate-label layer-detailed-label')
-    .attr('transform', () => {
-      let x = intermediateX1 + nodeLength / 2;
-      let y = Math.max(8, svgPaddings.top - 30);
-      return `translate(${x}, ${y})`;
-    })
-    .classed('hidden', !detailedMode)
-    .append('text')
-    .style('text-anchor', 'middle')
-    .style('dominant-baseline', 'middle')
-    .style('opacity', '0.7')
-    .style('font-weight', 800)
-    .append('tspan')
-    .text('intermediate')
-    .append('tspan')
-    .style('font-size', '8px')
-    .style('font-weight', 'normal')
-    .attr('x', 0)
-    .attr('dy', '1.5em')
-    .text(`(${cnn[curLayerIndex][0].output.length},
-      ${cnn[curLayerIndex][0].output[0].length},
-      ${cnn[curLayerIndex].length})`);
 
   // Draw the edges
   let linkGen = d3.linkHorizontal()
@@ -866,21 +885,24 @@ const drawIntermediateLayerAnnotation = (arg) => {
   let sliderX2, sliderY2, arrowSX2, arrowSY2, dr2, arrowTX2, arrowTY2;
   
   if (isFirstConv) {
+    let prevLayerNode0 = nodeCoordinate[curLayerIndex - 1][0];
+    let prevLayerNode1 = nodeCoordinate[curLayerIndex - 1][1] || prevLayerNode0;
+
     sliderX = leftX;
-    sliderY = nodeCoordinate[curLayerIndex - 1][0].y + nodeLength +
+    sliderY = prevLayerNode0.y + nodeLength +
       kernelRectLength * 3;
     arrowSX = leftX - 5;
-    arrowSY = nodeCoordinate[curLayerIndex - 1][0].y + nodeLength +
+    arrowSY = prevLayerNode0.y + nodeLength +
       kernelRectLength * 3 + 5;
     dr = 20;
 
     sliderX2 = leftX;
-      sliderY2 = nodeCoordinate[curLayerIndex - 1][1].y + nodeLength +
+      sliderY2 = prevLayerNode1.y + nodeLength +
     kernelRectLength * 3;
     arrowSX2 = leftX - kernelRectLength * 3;
-    arrowSY2 = nodeCoordinate[curLayerIndex - 1][1].y + nodeLength + 15;
+    arrowSY2 = prevLayerNode1.y + nodeLength + 15;
     arrowTX2 = leftX - 13;
-    arrowTY2 =  nodeCoordinate[curLayerIndex - 1][1].y + 15;
+    arrowTY2 =  prevLayerNode1.y + 15;
     dr2 = 35;
   } else {
     sliderX = leftX - 3 * kernelRectLength * 3;
@@ -1126,9 +1148,9 @@ export const addOverlayRect = (gradientName, x, y, width, height) => {
     .style('fill', `url(#${gradientName})`)
     .style('stroke', 'none')
     .attr('width', safeWidth)
-    .attr('height', safeHeight)
+    .attr('height', safeHeight - 22)
     .attr('x', x)
-    .attr('y', y)
+    .attr('y', y + 22)
     .style('opacity', 0);
   
   overlayRect.transition('move')
@@ -1190,6 +1212,23 @@ const redrawLayerIfNeeded = (curLayerIndex, i) => {
   return {range: range, minMax: {min: min, max: max}};
 }
 
+// Fade all visible headings except the two layers participating in expansion.
+const applyExpandedHeadingOpacity = (curLayerIndex) => {
+  for (let li = 0; li < cnn.length; li++) {
+    if (li === curLayerIndex - 1 || li === curLayerIndex) {
+      continue;
+    }
+
+    svg.selectAll(`g#layer-label-${li}, g#layer-detailed-label-${li}`)
+      .filter((d, ni, nodes) => !d3.select(nodes[ni]).classed('hidden'))
+      .style('opacity', fadedLayerOpacity);
+  }
+
+  svg.selectAll(`g#layer-label-${curLayerIndex - 1}, g#layer-detailed-label-${curLayerIndex - 1},
+    g#layer-label-${curLayerIndex}, g#layer-detailed-label-${curLayerIndex}`)
+    .style('opacity', null);
+}
+
 /**
  * Draw the intermediate layer before conv_1_1
  * @param {number} curLayerIndex Index of the selected layer
@@ -1248,6 +1287,8 @@ export const drawConv1 = (curLayerIndex, d, i, width, height,
       opacity: 0.15
     });
   }
+
+  applyExpandedHeadingOpacity(curLayerIndex);
 
   // Add an overlay gradient and rect
   let stops = [{offset: '0%', color: 'rgb(250, 250, 250)', opacity: 0.85},
@@ -1315,18 +1356,6 @@ export const drawConv1 = (curLayerIndex, d, i, width, height,
   drawIntermediateLayerLegend({
     legendHeight: 5,
     curLayerIndex: curLayerIndex,
-    range: range,
-    minMax: finalMinMax,
-    group: intermediateLayer,
-    width: 2 * nodeLength + intermediateGap,
-    x: nodeCoordinate[curLayerIndex - 1][2].x,
-    y: svgPaddings.top + vSpaceAroundGap * (10) + vSpaceAroundGap + 
-      nodeLength * 10
-  });
-
-  drawIntermediateLayerLegend({
-    legendHeight: 5,
-    curLayerIndex: curLayerIndex,
     range: kernelRange,
     minMax: kernelMinMax,
     group: intermediateLayer,
@@ -1338,7 +1367,6 @@ export const drawConv1 = (curLayerIndex, d, i, width, height,
     colorScale: layerColorScales.weight,
     gradientGap: 0.2
   });
-
   // Show everything
   svg.selectAll('g.intermediate-layer, g.intermediate-layer-annotation')
     .transition()
@@ -1395,10 +1423,6 @@ export const drawConv2 = (curLayerIndex, d, i, width, height,
       delay: 0,
       opacity: fadedLayerOpacity
     });
-
-    svg.selectAll(`g#layer-label-${i}, g#layer-detailed-label-${i}`)
-      .filter((d, ni, nodes) => !d3.select(nodes[ni]).classed('hidden'))
-      .style('opacity', fadedLayerOpacity);
   }
 
   // Fade left-side non-expanded layers (e.g. relu_1).
@@ -1410,16 +1434,9 @@ export const drawConv2 = (curLayerIndex, d, i, width, height,
       delay: 0,
       opacity: fadedLayerOpacity
     });
-
-    svg.selectAll(`g#layer-label-${i}, g#layer-detailed-label-${i}`)
-      .filter((d, ni, nodes) => !d3.select(nodes[ni]).classed('hidden'))
-      .style('opacity', fadedLayerOpacity);
   }
 
-  // Keep the two expanded layers' headings fully visible.
-  svg.selectAll(`g#layer-label-${curLayerIndex - 1}, g#layer-detailed-label-${curLayerIndex - 1},
-    g#layer-label-${curLayerIndex}, g#layer-detailed-label-${curLayerIndex}`)
-    .style('opacity', null);
+  applyExpandedHeadingOpacity(curLayerIndex);
 
   // Add an overlay
   let stops = [{offset: '0%', color: 'rgb(250, 250, 250)', opacity: 0.85},
@@ -1560,6 +1577,8 @@ export const drawConv3 = (curLayerIndex, d, i, width, height,
     moveLayerX({layerIndex: i, targetX: curX, disable: true, delay: 0});
   }
 
+  applyExpandedHeadingOpacity(curLayerIndex);
+
   // Add an overlay
   let stops = [{offset: '0%', color: 'rgb(250, 250, 250)', opacity: 1},
     {offset: '50%', color: 'rgb(250, 250, 250)', opacity: 0.9},
@@ -1694,6 +1713,8 @@ export const drawConv4 = (curLayerIndex, d, i, width, height,
     let curX = nodeCoordinate[i][0].x - leftShift;
     moveLayerX({layerIndex: i, targetX: curX, disable: true, delay: 0});
   }
+
+  applyExpandedHeadingOpacity(curLayerIndex);
 
   // Add an overlay
   let stops = [{offset: '0%', color: 'rgb(250, 250, 250)', opacity: 1},

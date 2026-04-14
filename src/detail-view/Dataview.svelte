@@ -67,11 +67,12 @@
         }
       });
     if (isKernelMath) {
+      const kernelMathFontSize = Math.max(13, Math.floor(constraint / textConstraintDivisor));
       var text = row.selectAll(".text")
         .data(function(d) { return d; })
         .enter().append("text")
         .attr("class","text")
-        .style("font-size", Math.floor(constraint / textConstraintDivisor) + "px")
+        .style("font-size", kernelMathFontSize + "px")
         .attr("x", function(d) { return d.x + d.width / 2; })
         .attr("y", function(d) { return d.y + d.height / 2; })
         .style("fill", function(d) {

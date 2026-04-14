@@ -6,12 +6,10 @@
     getMatrixSliceFromInputHighlights, gridData
   } from './DetailviewUtils.js';
   import Dataview from './Dataview.svelte';
-  import KernelMathView from './KernelMathView.svelte';
-  // image: nxn array -- prepadded.
-  // kernel: mxm array.
-  // stride: int
+  import KernelMathViewConv1 from './KernelMathViewConv1.svelte';
+
   export let stride;
-  export let dilation
+  export let dilation;
   export let kernel;
   export let image;
   export let output;
@@ -19,6 +17,7 @@
   export let dataRange;
   export let colorScale;
   export let isInputInputLayer = false;
+  export let bias = 0;
 
   const dispatch = createEventDispatcher();
   const padding = 0;
@@ -27,28 +26,26 @@
   let padded_input_size = image.length + padding * 2;
   $: padded_input_size = image.length + padding * 2;
 
-  // Dummy data for original state of component.
   let testInputMatrixSlice = [];
   for (let i = 0; i < kernel.length; i++) {
     testInputMatrixSlice.push([]);
     for (let j = 0; j < kernel.length; j++) {
-      testInputMatrixSlice[i].push(0)
+      testInputMatrixSlice[i].push(0);
     }
   }
-  testInputMatrixSlice = gridData(testInputMatrixSlice, middleConstraint)
+  testInputMatrixSlice = gridData(testInputMatrixSlice, middleConstraint);
   let testOutputMatrixSlice = gridData([[0]], middleConstraint);
 
   let inputHighlights = [];
   let outputHighlights = array1d(output.length * output.length, (i) => true);
   let interval;
-  $ : {
+  $: {
     let inputHighlights = [];
     let outputHighlights = array1d(output.length * output.length, (i) => true);
     let interval;
   }
 
   let counter;
-  // lots of replication between mouseover and start-conv. TODO: fix this.
   function startConvolution(stride) {
     counter = 0;
     let outputMappings = generateOutputMappings(stride, output, kernel.length, padded_input_size, dilation);
@@ -61,13 +58,13 @@
       const animatedH = Math.floor(flat_animated / output.length);
       const animatedW = flat_animated % output.length;
       outputHighlights[animatedH * output.length + animatedW] = true;
-      inputHighlights = compute_input_multiplies_with_weight(animatedH, animatedW, padded_input_size, kernel.length, outputMappings, kernel.length)
+      inputHighlights = compute_input_multiplies_with_weight(animatedH, animatedW, padded_input_size, kernel.length, outputMappings, kernel.length);
       const inputMatrixSlice = getMatrixSliceFromInputHighlights(image, inputHighlights, kernel.length);
       testInputMatrixSlice = gridData(inputMatrixSlice, middleConstraint);
       const outputMatrixSlice = getMatrixSliceFromOutputHighlights(output, outputHighlights);
       testOutputMatrixSlice = gridData(outputMatrixSlice, middleConstraint);
       counter++;
-    }, 250)
+    }, 250);
   }
 
   function handleMouseover(event) {
@@ -76,26 +73,24 @@
     const animatedH = event.detail.hoverH;
     const animatedW = event.detail.hoverW;
     outputHighlights[animatedH * output.length + animatedW] = true;
-    inputHighlights = compute_input_multiplies_with_weight(animatedH, animatedW, padded_input_size, kernel.length, outputMappings, kernel.length)
+    inputHighlights = compute_input_multiplies_with_weight(animatedH, animatedW, padded_input_size, kernel.length, outputMappings, kernel.length);
     const inputMatrixSlice = getMatrixSliceFromInputHighlights(image, inputHighlights, kernel.length);
     testInputMatrixSlice = gridData(inputMatrixSlice, middleConstraint);
     const outputMatrixSlice = getMatrixSliceFromOutputHighlights(output, outputHighlights);
     testOutputMatrixSlice = gridData(outputMatrixSlice, middleConstraint);
     isPaused = true;
-    dispatch('message', {
-      text: isPaused
-    });
+    dispatch('message', { text: isPaused });
   }
 
   startConvolution(stride);
-  let testImage = gridData(image)
-  let testOutput = gridData(output)
-  let testKernel = gridData(kernel, middleConstraint)
-  $ : {
+  let testImage = gridData(image);
+  let testOutput = gridData(output);
+  let testKernel = gridData(kernel, middleConstraint);
+  $: {
     startConvolution(stride);
-    testImage = gridData(image)
-    testOutput = gridData(output)
-    testKernel = gridData(kernel, middleConstraint)
+    testImage = gridData(image);
+    testOutput = gridData(output);
+    testKernel = gridData(kernel, middleConstraint);
   }
 </script>
 
@@ -125,11 +120,9 @@
       isInputLayer={isInputInputLayer}/>
 </div>
 <div class="column has-text-centered middle-column">
-  <KernelMathView data={testInputMatrixSlice} kernel={testKernel} constraint={middleConstraint}
+  <KernelMathViewConv1 data={testInputMatrixSlice} kernel={testKernel} constraint={middleConstraint}
                   dataRange={dataRange} kernelRange={getDataRange(kernel)} colorScale={colorScale}
-                  isInputLayer={isInputInputLayer}/>
-  <Dataview data={testOutputMatrixSlice} highlights={outputHighlights} isKernelMath={true}
-      constraint={middleConstraint} dataRange={dataRange}/>
+                  isInputLayer={isInputInputLayer} bias={bias}/>
 </div>
 <div class="column has-text-centered">
   <div class="header-text">

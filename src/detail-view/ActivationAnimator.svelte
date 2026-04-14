@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { array1d, getMatrixSliceFromOutputHighlights,
-    getVisualizationSizeConstraint, getMatrixSliceFromInputHighlights, gridData
+    getVisualizationSizeConstraint, getMiddleVisualizationSizeConstraint, getMatrixSliceFromInputHighlights, gridData
   } from './DetailviewUtils.js';
   import Dataview from './Dataview.svelte';
 
@@ -13,6 +13,7 @@
 
   const dispatch = createEventDispatcher();
   const padding = 0;
+  const middleConstraint = getMiddleVisualizationSizeConstraint(1);
   let padded_input_size = image.length + padding * 2;
   $: padded_input_size = image.length + padding * 2;
 
@@ -43,9 +44,9 @@
       outputHighlights[animatedH * output.length + animatedW] = true;
       inputHighlights[animatedH * output.length + animatedW] = true;
       const inputMatrixSlice = getMatrixSliceFromInputHighlights(image, inputHighlights, 1);
-      gridInputMatrixSlice = gridData(inputMatrixSlice);
+      gridInputMatrixSlice = gridData(inputMatrixSlice, middleConstraint);
       const outputMatrixSlice = getMatrixSliceFromOutputHighlights(output, outputHighlights);
-      gridOutputMatrixSlice = gridData(outputMatrixSlice);
+      gridOutputMatrixSlice = gridData(outputMatrixSlice, middleConstraint);
       counter++;
     }, 250)
   }
@@ -58,9 +59,9 @@
     inputHighlights = array1d(image.length * image.length, (i) => undefined);
     inputHighlights[animatedH * output.length + animatedW] = true;
     const inputMatrixSlice = getMatrixSliceFromInputHighlights(image, inputHighlights, 1);
-    gridInputMatrixSlice = gridData(inputMatrixSlice);
+    gridInputMatrixSlice = gridData(inputMatrixSlice, middleConstraint);
     const outputMatrixSlice = getMatrixSliceFromOutputHighlights(output, outputHighlights);
-    gridOutputMatrixSlice = gridData(outputMatrixSlice);
+    gridOutputMatrixSlice = gridData(outputMatrixSlice, middleConstraint);
     isPaused = true;
     dispatch('message', {
       text: isPaused
@@ -92,28 +93,28 @@
 </div>
 <div class="column has-text-centered">
   {#if activationType === 'sigmoid'}
-    <span>
-      sigmoid(
+    <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+      <span>sigmoid(</span>
       <Dataview data={gridInputMatrixSlice} highlights={outputHighlights} isKernelMath={true}
-      constraint={20} dataRange={dataRange}/>
-      )
-      =
+      constraint={middleConstraint} dataRange={dataRange}/>
+      <span>)</span>
+      <span>=</span>
       <Dataview data={gridOutputMatrixSlice} highlights={outputHighlights} isKernelMath={true}
-        constraint={20} dataRange={dataRange}/>
-    </span>
+        constraint={middleConstraint} dataRange={dataRange}/>
+    </div>
   {:else}
-    <span>
-      max(
-      <Dataview data={gridData([[0]])} highlights={outputHighlights} isKernelMath={true}
-      constraint={20} dataRange={dataRange}/>
-      ,
+    <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+      <span>max(</span>
+      <Dataview data={gridData([[0]], middleConstraint)} highlights={outputHighlights} isKernelMath={true}
+      constraint={middleConstraint} dataRange={dataRange}/>
+      <span>,</span>
       <Dataview data={gridInputMatrixSlice} highlights={outputHighlights} isKernelMath={true}
-      constraint={20} dataRange={dataRange}/>
-      )
-      =
+      constraint={middleConstraint} dataRange={dataRange}/>
+      <span>)</span>
+      <span>=</span>
       <Dataview data={gridOutputMatrixSlice} highlights={outputHighlights} isKernelMath={true}
-        constraint={20} dataRange={dataRange}/>
-    </span>
+        constraint={middleConstraint} dataRange={dataRange}/>
+    </div>
   {/if}
 </div>
 <div class="column has-text-centered">

@@ -27,6 +27,9 @@ const gapRatio = overviewConfig.gapRatio;
 const classList = overviewConfig.classLists;
 const formater = d3.format('.4f');
 const fadedLayerOpacity = 0.15;
+const compactHeadingToModelGap = 25;
+const flattenVerticalCenterOffset = 14;
+const bottleneckExpansionGray = '#7E7E7E';
 
 // Shared variables
 let svg = undefined;
@@ -1120,8 +1123,8 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
     }));
 
   const sampleCount = sourceData.length;
-  const topY = nodeCoordinate[curLayerIndex - 1][0].y;
-  const bottomY = nodeCoordinate[curLayerIndex - 1][nodeCoordinate[curLayerIndex - 1].length - 1].y + nodeLength;
+  const topY = nodeCoordinate[curLayerIndex - 1][0].y - flattenVerticalCenterOffset;
+  const bottomY = nodeCoordinate[curLayerIndex - 1][nodeCoordinate[curLayerIndex - 1].length - 1].y + nodeLength - flattenVerticalCenterOffset;
   const stripX = leftX + nodeLength + hSpaceAroundGap * gapRatio * 0.8;
   const stripW = Math.max(8, nodeLength * 0.42);
   const symbolX = stripX + hSpaceAroundGap * gapRatio * 0.85;
@@ -1135,6 +1138,9 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
   const valExtent = d3.extent(sampled.map(entry => entry.flatNode.output));
   const valueRange = Math.max(Math.abs(valExtent[0] || 0), Math.abs(valExtent[1] || 0));
   const colorScale = layerColorScales.conv;
+  const flattenFeatureColor = (entry) => colorScale(
+    ((entry.flatNode.output || 0) + valueRange) / Math.max(1e-6, 2 * valueRange)
+  );
 
   const linkGen = d3.linkHorizontal().x(v => v.x).y(v => v.y);
 
@@ -1148,7 +1154,7 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
     .attr('y', (entry, si) => topY + si * rowH)
     .attr('width', stripW)
     .attr('height', rowH)
-    .style('fill', entry => colorScale(((entry.flatNode.output || 0) + valueRange) / Math.max(1e-6, 2 * valueRange)))
+    .style('fill', entry => flattenFeatureColor(entry))
     .style('cursor', 'crosshair')
     .on('mouseover', entry => {
       hoverInfoStore.set({
@@ -1169,7 +1175,7 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
       target: {x: symbolX - plusSymbolRadius - 2, y: symbolY}
     }))
     .style('fill', 'none')
-    .style('stroke', entry => gappedColorScale(layerColorScales.weight, 2, entry.weight || 0, 0.25))
+    .style('stroke', bottleneckExpansionGray)
     .style('stroke-width', 0.8)
     .style('opacity', 0.8);
 
@@ -1194,7 +1200,8 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
         target: {
           x: stripX - 2,
           y: topY + si * rowH + rowH / 2
-        }
+        },
+        edgeColor: flattenFeatureColor(entry)
       };
     });
 
@@ -1205,7 +1212,7 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
     .attr('class', 'maxpool-to-flatten')
     .attr('d', e => linkGen({source: e.source, target: e.target}))
     .style('fill', 'none')
-    .style('stroke', edgeInitColor)
+    .style('stroke', e => e.edgeColor)
     .style('stroke-width', 0.8)
     .style('opacity', 1);
 
@@ -1220,30 +1227,30 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
     .attr('height', 2 * plusSymbolRadius)
     .attr('rx', 3)
     .style('fill', 'none')
-    .style('stroke', intermediateColor);
+    .style('stroke', bottleneckExpansionGray);
 
   symbolGroup.append('rect')
     .attr('x', -(plusSymbolRadius - 3))
     .attr('y', -0.5)
     .attr('width', 2 * (plusSymbolRadius - 3))
     .attr('height', 1)
-    .style('fill', intermediateColor);
+    .style('fill', bottleneckExpansionGray);
 
   symbolGroup.append('rect')
     .attr('x', -0.5)
     .attr('y', -(plusSymbolRadius - 3))
     .attr('width', 1)
     .attr('height', 2 * (plusSymbolRadius - 3))
-    .style('fill', intermediateColor);
+    .style('fill', bottleneckExpansionGray);
 
   strip.append('path')
     .attr('d', linkGen({
       source: {x: symbolX + plusSymbolRadius + 2, y: symbolY},
       // Shorten only this single edge (plus/bias -> bottleneck input).
-      target: {x: nodeCoordinate[curLayerIndex][i].x - 2, y: symbolY}
+      target: {x: nodeCoordinate[curLayerIndex][i].x - 12, y: symbolY}
     }))
     .style('fill', 'none')
-    .style('stroke', edgeInitColor)
+    .style('stroke', bottleneckExpansionGray)
     .style('stroke-width', 1.2);
 
   const preRange = cnnLayerRanges[selectedScaleLevel][curLayerIndex - 1] || 1;
@@ -1263,10 +1270,12 @@ export const drawFlatten = (curLayerIndex, d, i, width, height) => {
     .style('opacity', 1)
     .append('text')
     .attr('class', 'annotation-text')
-    .attr('x', stripX - 20)
-    .attr('y', topY - 20)
-    .style('text-anchor', 'start')
-    .style('dominant-baseline', 'hanging')
+    .attr('x', stripX + stripW / 2)
+    .attr('y', d3.min(nodeCoordinate.filter(layer => layer && layer[0]).map(layer => layer[0].y)) - compactHeadingToModelGap)
+    .style('text-anchor', 'middle')
+    .style('dominant-baseline', 'middle')
+    .style('font-size', '15px')
+    .style('font-weight', 'normal')
     .text('flatten(784)');
 
   intermediateLayer.transition()

@@ -1,15 +1,19 @@
 <script>
   /* global d3 */
 
-  import { onMount, createEventDispatcher } from 'svelte';
+  import { onMount, createEventDispatcher, tick } from 'svelte';
   import { modalStore } from '../stores.js';
 
   let modalComponent;
   let valiImg;
+  let drawCanvas;
+  let drawCtx;
   let inputValue = '';
   let showLoading = false;
   let files;
   let usingURL = true;
+  let isDrawing = false;
+  let hasDrawing = false;
   let errorInfo = {
     show: false,
     error: ''
@@ -20,7 +24,83 @@
     show: false
   };
   modalStore.set(modalInfo);
-  modalStore.subscribe(value => {modalInfo = value});
+  modalStore.subscribe(async value => {
+    let wasClosed = !modalInfo.show;
+    modalInfo = value;
+
+    if (modalInfo.show && wasClosed) {
+      await tick();
+      initDrawCanvas();
+      clearDrawCanvas();
+    }
+  });
+
+  const initDrawCanvas = () => {
+    if (!drawCanvas) return;
+    drawCtx = drawCanvas.getContext('2d');
+    if (!drawCtx) return;
+    drawCtx.lineJoin = 'round';
+    drawCtx.lineCap = 'round';
+    drawCtx.lineWidth = 2.6;
+    drawCtx.strokeStyle = '#F5F5F5';
+  }
+
+  const clearDrawCanvas = () => {
+    if (!drawCtx || !drawCanvas) return;
+    drawCtx.fillStyle = '#000000';
+    drawCtx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
+    hasDrawing = false;
+  }
+
+  const canvasPoint = (event) => {
+    let rect = drawCanvas.getBoundingClientRect();
+    let x = (event.clientX - rect.left) * (drawCanvas.width / rect.width);
+    let y = (event.clientY - rect.top) * (drawCanvas.height / rect.height);
+    return {
+      x: Math.max(0, Math.min(drawCanvas.width - 1, x)),
+      y: Math.max(0, Math.min(drawCanvas.height - 1, y))
+    };
+  }
+
+  const startDrawing = (event) => {
+    if (!drawCtx) return;
+    event.preventDefault();
+    let p = canvasPoint(event);
+    drawCtx.beginPath();
+    drawCtx.moveTo(p.x, p.y);
+    isDrawing = true;
+  }
+
+  const drawStroke = (event) => {
+    if (!isDrawing || !drawCtx) return;
+    event.preventDefault();
+    let p = canvasPoint(event);
+    drawCtx.lineTo(p.x, p.y);
+    drawCtx.stroke();
+    hasDrawing = true;
+  }
+
+  const stopDrawing = (event) => {
+    if (!isDrawing) return;
+    event.preventDefault();
+    isDrawing = false;
+    drawCtx.closePath();
+  }
+
+  const useDrawing = () => {
+    if (!drawCanvas) return;
+    if (!hasDrawing) {
+      errorInfo.show = true;
+      errorInfo.error = 'Draw a digit first.';
+      return;
+    }
+
+    errorInfo.show = false;
+    showLoading = false;
+    modalInfo.show = false;
+    modalStore.set(modalInfo);
+    dispatch('urlTyped', {url: drawCanvas.toDataURL('image/png')});
+  }
 
   const errorCallback = () => {
     // The URL is invalid, show an error message on the UI
@@ -77,6 +157,7 @@
 
   const addClicked = () => {
     // Validate the input URL
+    usingURL = true;
     showLoading = true;
     errorInfo.show = false;
     valiImg.crossOrigin = "Anonymous";
@@ -93,6 +174,9 @@
   onMount(() => {
     let modal = d3.select(modalComponent)
       .select('#input-modal');
+
+    initDrawCanvas();
+    clearDrawCanvas();
   })
 
 </script>
@@ -144,6 +228,48 @@
   .field {
     display: flex;
     justify-content: space-between;
+  }
+
+  .draw-container {
+    margin-top: 12px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .draw-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 180px;
+  }
+
+  .draw-title {
+    font-size: 14px;
+    color: #444;
+  }
+
+  .draw-note {
+    font-size: 12px;
+    color: #777;
+    line-height: 1.35;
+  }
+
+  .draw-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .draw-canvas {
+    width: 196px;
+    height: 196px;
+    border: 1.5px solid #9a9a9a;
+    border-radius: 4px;
+    background: #000;
+    image-rendering: pixelated;
+    cursor: crosshair;
+    touch-action: none;
   }
 
 </style>
@@ -203,6 +329,29 @@
             </label>
           </div>
 
+        </div>
+
+        <div class="draw-container">
+          <canvas
+            class="draw-canvas"
+            bind:this={drawCanvas}
+            width="28"
+            height="28"
+            on:pointerdown={startDrawing}
+            on:pointermove={drawStroke}
+            on:pointerup={stopDrawing}
+            on:pointerleave={stopDrawing}
+            on:pointercancel={stopDrawing}
+            aria-label="Draw digit canvas"></canvas>
+
+          <div class="draw-meta">
+            <div class="draw-title">Draw your own digit (28x28)</div>
+            <div class="draw-note">Draw in black on white, then use it as input.</div>
+            <div class="draw-actions">
+              <button class="button is-smaller" on:click={clearDrawCanvas}>Clear</button>
+              <button class="button is-success is-smaller" on:click={useDrawing}>Use Drawing</button>
+            </div>
+          </div>
         </div>
 
       </section>
