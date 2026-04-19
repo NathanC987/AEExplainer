@@ -22,6 +22,7 @@
   import {
     loadTrainedModel, constructCNN
   } from '../utils/cnn-tf.js';
+  import { cachedSingleConv } from '../utils/cnn.js';
   import { overviewConfig } from '../config.js';
 
   import {
@@ -470,32 +471,60 @@
     let invertY = yScale.invert.bind(yScale);
 
     const interpolateLatent = (xValue, yValue) => {
-      let nearest = latentPoints
-        .map(entry => {
-          let dx = entry.x - xValue;
-          let dy = entry.y - yValue;
-          let distanceSq = dx * dx + dy * dy;
-          return { entry, distanceSq };
-        })
-        .sort((a, b) => a.distanceSq - b.distanceSq)
-        .slice(0, Math.min(latentHoverK, latentPoints.length));
-
-      if (!nearest.length) {
+      let k = Math.min(latentHoverK, latentPoints.length);
+      if (k <= 0) {
         return null;
       }
 
-      let zLength = nearest[0].entry.z.length;
+      // Keep only top-k nearest points without sorting all points on every move.
+      let nearestEntries = new Array(k).fill(null);
+      let nearestDistSq = new Array(k).fill(Infinity);
+
+      for (let pi = 0; pi < latentPoints.length; pi++) {
+        let entry = latentPoints[pi];
+        let dx = entry.x - xValue;
+        let dy = entry.y - yValue;
+        let distanceSq = dx * dx + dy * dy;
+
+        if (distanceSq >= nearestDistSq[k - 1]) {
+          continue;
+        }
+
+        let insertAt = k - 1;
+        while (insertAt > 0 && distanceSq < nearestDistSq[insertAt - 1]) {
+          nearestDistSq[insertAt] = nearestDistSq[insertAt - 1];
+          nearestEntries[insertAt] = nearestEntries[insertAt - 1];
+          insertAt -= 1;
+        }
+        nearestDistSq[insertAt] = distanceSq;
+        nearestEntries[insertAt] = entry;
+      }
+
+      let firstValid = nearestEntries.findIndex(entry => entry !== null);
+      if (firstValid < 0) {
+        return null;
+      }
+
+      let zLength = nearestEntries[firstValid].z.length;
       let weightedZ = new Array(zLength).fill(0);
       let weightSum = 0;
-      let nearestEntry = nearest[0].entry;
+      let nearestEntry = nearestEntries[firstValid];
 
-      nearest.forEach(item => {
-        let weight = 1 / Math.max(Math.sqrt(item.distanceSq), 1e-4);
+      for (let ni = 0; ni < k; ni++) {
+        let entry = nearestEntries[ni];
+        if (!entry) {
+          continue;
+        }
+        let weight = 1 / Math.max(Math.sqrt(nearestDistSq[ni]), 1e-4);
         weightSum += weight;
         for (let zi = 0; zi < zLength; zi++) {
-          weightedZ[zi] += item.entry.z[zi] * weight;
+          weightedZ[zi] += entry.z[zi] * weight;
         }
-      });
+      }
+
+      if (weightSum <= 0) {
+        return null;
+      }
 
       for (let zi = 0; zi < zLength; zi++) {
         weightedZ[zi] /= weightSum;
@@ -572,8 +601,7 @@
     for (let i = 0; i < filesToTry.length; i++) {
       let filePath = filesToTry[i];
       try {
-        let requestPath = `${filePath}?ts=${Date.now()}`;
-        let response = await fetch(requestPath, { cache: 'no-store' });
+        let response = await fetch(filePath);
         if (!response.ok) {
           continue;
         }
@@ -810,6 +838,10 @@
   const clampNonNegative = value => Math.max(0, Number(value) || 0);
 
   const getSelectedConvData = () => {
+    if (!selectedNode.data || selectedNode.data.type !== 'conv') {
+      return null;
+    }
+
     if (!Array.isArray(nodeData) || nodeData.length === 0) {
       return null;
     }
@@ -826,7 +858,8 @@
   }
 
   $: selectedConvData = getSelectedConvData();
-  $: convDetailData = selectedConvData ||
+  $: convDetailData = selectedNode.data && selectedNode.data.type === 'conv' ?
+    selectedConvData :
     (Array.isArray(nodeData) && nodeData.length > 0 ? nodeData[0] : null);
 
   const applyFocusedHeadingOpacity = (curLayerIndex) => {
@@ -1059,6 +1092,7 @@
     if (detailedViewNum === d.index) {
       // Setting this for testing purposes currently.
       selectedNodeIndex = -1; 
+      selectedConvData = null;
       // User clicks this node again -> rewind
       detailedViewNum = undefined;
       svg.select(`rect#underneath-gateway-${d.index}`)
@@ -1069,6 +1103,8 @@
     else {
       // Setting this for testing purposes currently.
       selectedNodeIndex = d.index;
+      selectedConvData = (Array.isArray(nodeData) && d.index >= 0 && d.index < nodeData.length) ?
+        nodeData[d.index] : null;
       let inputMatrix = d.output;
       let kernelMatrix = d.outputLinks[selectedI].weight;
       // let interMatrix = singleConv(inputMatrix, kernelMatrix);
@@ -1825,11 +1861,23 @@
     if (d.type === 'conv' || d.type === 'relu' || d.type === 'pool' ||
       d.type === 'sigmoid' || d.type === 'upsample') {
       let data = [];
+      let convNodeConfig = d.convConfig || null;
       for (let j = 0; j < d.inputLinks.length; j++) {
+        let inputMap = d.inputLinks[j].source.output;
+        let kernelMap = d.inputLinks[j].weight;
+        let outputMap = d.inputLinks[j].dest.output;
+
+        if (d.type === 'conv' && d.layerName !== 'conv_1') {
+          let stride = Math.max(1, Number((convNodeConfig || {}).stride) || 1);
+          let padding = ((convNodeConfig || {}).padding || 'valid').toString().toLowerCase();
+          let dilation = Math.max(1, Number((convNodeConfig || {}).dilation) || 1);
+          outputMap = cachedSingleConv(inputMap, kernelMap, stride, padding, dilation);
+        }
+
         data.push({
-          input: d.inputLinks[j].source.output,
-          kernel: d.inputLinks[j].weight,
-          output: d.inputLinks[j].dest.output,
+          input: inputMap,
+          kernel: kernelMap,
+          output: outputMap,
         })
       }
       let curLayerIndex = layerIndexDict[d.layerName];
@@ -1837,9 +1885,15 @@
       data.inputIsInputLayer = curLayerIndex <= 1;
       data.isInputInputLayer = curLayerIndex <= 1;
       if (d.type === 'conv') {
+        let inferredPadding = 'valid';
+        if (data.length > 0 && Array.isArray(data[0].input) && Array.isArray(data[0].output) &&
+          data[0].input.length === data[0].output.length) {
+          inferredPadding = 'same';
+        }
+
         data.convConfig = d.convConfig || {
           stride: 1,
-          padding: 'valid',
+          padding: inferredPadding,
           dilation: 1,
           kernelSize: d.inputLinks[0] && d.inputLinks[0].weight ?
             d.inputLinks[0].weight.length : 3
@@ -1874,6 +1928,10 @@
 
       animateConv1InPlace(d, nodeIndex, curLayerIndex);
       return;
+    }
+
+    if (d.type === 'conv') {
+      selectedConvData = null;
     }
 
     if (d.type == 'relu' || d.type == 'pool' || d.type == 'sigmoid' ||
@@ -2183,20 +2241,22 @@
     console.timeEnd('Construct cnn');
 
     cnnStore.set(cnn);
-    console.log(cnn);
     updateCurrentReconPanel();
-
-    await loadLatentPoints();
-    if (latentPoints.length) {
-      latentReconMap = decodeLatentVector(latentPoints[0].z);
-      latentHoverNotice = `Nearest class ${latentPoints[0].label}, x=${latentPoints[0].x.toFixed(2)}, y=${latentPoints[0].y.toFixed(2)}`;
-    }
 
     updateCNNLayerRanges();
 
-    // Create and draw the CNN view
+    // Create and draw the CNN view early so core interactions are responsive.
     drawCNN(width, height, cnnGroup, nodeMouseOverHandler,
       nodeMouseLeaveHandler, nodeClickHandler);
+
+    // Load latent data asynchronously so startup is not blocked by 12k-point JSON.
+    setTimeout(async () => {
+      await loadLatentPoints();
+      if (latentPoints.length) {
+        latentReconMap = decodeLatentVector(latentPoints[0].z);
+        latentHoverNotice = `Nearest class ${latentPoints[0].label}, x=${latentPoints[0].x.toFixed(2)}, y=${latentPoints[0].y.toFixed(2)}`;
+      }
+    }, 0);
 
     // Clicking empty model space should close any open view (including conv_1).
     wholeSvg.on('click', emptySpaceClicked);
@@ -2938,10 +2998,12 @@
 </div>
 
 <div id='detailview'>
-  {#if selectedNode.data && selectedNode.data.type === 'conv' && convDetailData}
+  {#if selectedNode.layerName && selectedNode.layerName.includes('conv') && convDetailData}
     {#if selectedNode.layerName === 'conv_1'}
       <ConvolutionViewConv1 on:message={handleExitFromDetiledConvView} input={convDetailData.input}
                         kernel={convDetailData.kernel}
+                        output={convDetailData.output}
+                        convConfig={nodeData.convConfig}
                         bias={selectedNode.data ? selectedNode.data.bias : 0}
                         dataRange={nodeData.colorRange}
                         colorScale={layerColorScales.conv}
@@ -2950,6 +3012,8 @@
     {:else}
       <ConvolutionView on:message={handleExitFromDetiledConvView} input={convDetailData.input}
                       kernel={convDetailData.kernel}
+                      output={convDetailData.output}
+                      convConfig={nodeData.convConfig}
                       dataRange={nodeData.colorRange}
                       colorScale={nodeData.inputIsInputLayer ?
                         layerColorScales.input[0] : layerColorScales.conv}

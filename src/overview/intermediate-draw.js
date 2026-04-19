@@ -16,7 +16,7 @@ import {
   drawIntermediateLayerLegend, moveLayerX, addOverlayGradient,
   drawArrow
 } from './intermediate-utils.js';
-import { singleConv } from '../utils/cnn.js';
+import { cachedSingleConv } from '../utils/cnn.js';
 import { overviewConfig } from '../config.js';
 
 // Configs
@@ -75,6 +75,8 @@ detailedModeStore.subscribe( value => {detailedMode = value;} )
 
 let intermediateLayerPosition = undefined;
 intermediateLayerPositionStore.subscribe ( value => {intermediateLayerPosition = value;} )
+
+const intermediateImageCache = new WeakMap();
 
 // let curRightX = 0;
 
@@ -528,7 +530,7 @@ const drawIntermediateLayer = (curLayerIndex, leftX, rightX, rightStart,
     // Compute the intermediate value
     let inputMatrix = cnn[curLayerIndex - 1][ni].output;
     let kernelMatrix = cnn[curLayerIndex][i].inputLinks[ni].weight;
-    let interMatrix = singleConv(inputMatrix, kernelMatrix,
+    let interMatrix = cachedSingleConv(inputMatrix, kernelMatrix,
       convStride, convPadding, convDilation);
 
     // Compute the intermediate layer min max
@@ -544,8 +546,23 @@ const drawIntermediateLayer = (curLayerIndex, leftX, rightX, rightStart,
     
     // Draw the image
     let image = newNode.select('image');
-    drawIntermidiateImage(image, range, colorScale, interMatrix.length,
-      interMatrix);      
+    let cacheKey = [
+      Number(range),
+      String((d || {}).type || ''),
+      String((d || {}).layerName || ''),
+      ni
+    ].join('|');
+    let cachedByMatrix = intermediateImageCache.get(interMatrix);
+    if (cachedByMatrix && cachedByMatrix[cacheKey]) {
+      image.attr('xlink:href', cachedByMatrix[cacheKey]);
+    } else {
+      drawIntermidiateImage(image, range, colorScale, interMatrix.length,
+        interMatrix);
+      let renderedUrl = image.attr('xlink:href');
+      let nextCache = cachedByMatrix || {};
+      nextCache[cacheKey] = renderedUrl;
+      intermediateImageCache.set(interMatrix, nextCache);
+    }
 
     // Edge: input -> intermediate1
     linkData.push({
@@ -1257,6 +1274,15 @@ export const drawConv1 = (curLayerIndex, d, i, width, height,
   svg.select('g.edge-group')
     .style('visibility', 'hidden');
 
+  // Keep the previous layer (input) fully visible.
+  moveLayerX({
+    layerIndex: curLayerIndex - 1,
+    targetX: nodeCoordinate[curLayerIndex - 1][0].x,
+    disable: true,
+    delay: 0,
+    opacity: 1
+  });
+
   // Move the selected layer
   moveLayerX({layerIndex: curLayerIndex, targetX: targetX, disable: true,
     delay: 0, opacity: fadedLayerOpacity, specialIndex: i});
@@ -1404,6 +1430,15 @@ export const drawConv2 = (curLayerIndex, d, i, width, height,
   // Hide the edges
   svg.select('g.edge-group')
     .style('visibility', 'hidden');
+
+  // Keep the previous layer fully visible while expanded.
+  moveLayerX({
+    layerIndex: curLayerIndex - 1,
+    targetX: nodeCoordinate[curLayerIndex - 1][0].x,
+    disable: true,
+    delay: 0,
+    opacity: 1
+  });
 
   // Move the selected layer
   moveLayerX({layerIndex: curLayerIndex, targetX: targetX, disable: true,
@@ -1558,7 +1593,7 @@ export const drawConv3 = (curLayerIndex, d, i, width, height,
 
   // Move the previous layer
   moveLayerX({layerIndex: curLayerIndex - 1, targetX: leftX,
-    disable: true, delay: 0});
+    disable: true, delay: 0, opacity: 1});
 
   moveLayerX({layerIndex: curLayerIndex,
     targetX: targetX, disable: true,
@@ -1696,7 +1731,7 @@ export const drawConv4 = (curLayerIndex, d, i, width, height,
 
   // Move the previous layer
   moveLayerX({layerIndex: curLayerIndex - 1, targetX: leftX,
-    disable: true, delay: 0});
+    disable: true, delay: 0, opacity: 1});
 
   moveLayerX({layerIndex: curLayerIndex,
     targetX: targetX, disable: true,

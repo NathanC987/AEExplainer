@@ -1,10 +1,12 @@
 <script>
 	import ConvolutionAnimator from './ConvolutionAnimator.svelte';
-  import { singleConv } from '../utils/cnn.js';
+  import { singleConv, getPaddingForConv2D, padMatrix2D } from '../utils/cnn.js';
   import { createEventDispatcher } from 'svelte';
 
   export let input;
   export let kernel;
+  export let output = null;
+  export let convConfig = {};
   export let dataRange;
   export let colorScale = d3.interpolateRdBu;
   export let isInputInputLayer = false;
@@ -13,14 +15,37 @@
   
   const dispatch = createEventDispatcher();
   let stride = 1;
-  const dilation = 1;
+  let dilation = 1;
+  let padding = 'valid';
   var isPaused = false;
-  var outputFinal = singleConv(input, kernel, stride);
-  $: if (stride > 0) {
+  let paddedInput = input;
+  var outputFinal = output;
+
+  $: {
+    let kernelSize = Array.isArray(kernel) ? kernel.length : 3;
+    let inferredPadding = 'valid';
+    if (Array.isArray(input) && Array.isArray(output) && input.length === output.length) {
+      inferredPadding = 'same';
+    }
+    stride = Math.max(1, Number((convConfig || {}).stride) || 1);
+    dilation = Math.max(1, Number((convConfig || {}).dilation) || 1);
+    padding = ((convConfig || {}).padding || inferredPadding || 'valid').toString().toLowerCase();
+
     try { 
-      outputFinal = singleConv(input, kernel, stride);
+      if (Array.isArray(input) && Array.isArray(kernel)) {
+        let paddingInfo = getPaddingForConv2D(input.length, kernelSize, stride, padding, dilation);
+        paddedInput = padMatrix2D(input, paddingInfo, 0);
+      } else {
+        paddedInput = input;
+      }
+
+      if (Array.isArray(output) && output.length > 0) {
+        outputFinal = output;
+      } else {
+        outputFinal = singleConv(input, kernel, stride, padding, dilation);
+      }
     } catch {
-      console.log("Cannot handle stride of " + stride);
+      console.log('Cannot handle stride of ' + stride);
     }
   }
   
@@ -175,7 +200,7 @@
 
       <div class="container is-centered">
         <ConvolutionAnimator on:message={handlePauseFromInteraction} 
-          kernel={kernel} image={input} output={outputFinal} 
+          kernel={kernel} image={paddedInput} output={outputFinal} 
           stride={stride} dilation={dilation} isPaused={isPaused}
           dataRange={dataRange} colorScale={colorScale}
           isInputInputLayer={isInputInputLayer} />

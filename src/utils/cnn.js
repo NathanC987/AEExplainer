@@ -403,6 +403,43 @@ export const singleConv = (input, kernel, stride=1, padding=0, dilation=1) => {
   return result;
 }
 
+const singleConvMemo = new WeakMap();
+
+/**
+ * Memoized singleConv keyed by input matrix ref, kernel ref and conv params.
+ * This avoids repeating identical convolution work across interactions.
+ */
+export const cachedSingleConv = (input, kernel, stride=1, padding=0, dilation=1) => {
+  if (!input || !kernel || typeof input !== 'object' || typeof kernel !== 'object') {
+    return singleConv(input, kernel, stride, padding, dilation);
+  }
+
+  let strideNum = Math.max(1, Math.floor(Number(stride) || 1));
+  let dilationNum = Math.max(1, Math.floor(Number(dilation) || 1));
+  let paddingKey = typeof padding === 'string' ? padding.toLowerCase() : Number(padding);
+  let paramKey = `${strideNum}|${paddingKey}|${dilationNum}`;
+
+  let byInput = singleConvMemo.get(input);
+  if (!byInput) {
+    byInput = new WeakMap();
+    singleConvMemo.set(input, byInput);
+  }
+
+  let byKernel = byInput.get(kernel);
+  if (!byKernel) {
+    byKernel = new Map();
+    byInput.set(kernel, byKernel);
+  }
+
+  if (byKernel.has(paramKey)) {
+    return byKernel.get(paramKey);
+  }
+
+  let result = singleConv(input, kernel, strideNum, padding, dilationNum);
+  byKernel.set(paramKey, result);
+  return result;
+}
+
 /**
  * Convolution operation. This function update the outputs property of all nodes
  * in the given layer. Previous layer is accessed by the reference in nodes'

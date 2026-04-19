@@ -79,6 +79,10 @@ cnnLayerMinMaxStore.subscribe( value => {cnnLayerMinMax = value;} )
 let detailedMode = undefined;
 detailedModeStore.subscribe( value => {detailedMode = value;} )
 
+// Cache rendered image data URLs by output matrix reference to avoid
+// expensive canvas work when repeatedly redrawing the same nodes.
+const outputImageCache = new WeakMap();
+
 /**
  * Use bounded d3 data to draw one canvas
  * @param {object} d d3 data
@@ -98,8 +102,28 @@ export const drawOutput = (d, i, g, range) => {
     colorScale = layerColorScales.conv;
   }
 
-  // Set up a second convas in order to resize image
   let imageLength = d.output.length === undefined ? 1 : d.output.length;
+
+  if (imageLength > 1 && d.output && typeof d.output === 'object') {
+    let layerMinMax = (cnnLayerMinMax || [])[curLayerIndex] || {};
+    let minVal = Number(layerMinMax.min);
+    let maxVal = Number(layerMinMax.max);
+    let cacheKey = [
+      d.type,
+      d.layerName,
+      d.index,
+      Number(range),
+      Number.isFinite(minVal) ? minVal : 'na',
+      Number.isFinite(maxVal) ? maxVal : 'na'
+    ].join('|');
+    let cachedEntries = outputImageCache.get(d.output);
+    if (cachedEntries && cachedEntries[cacheKey]) {
+      d3.select(image).attr('xlink:href', cachedEntries[cacheKey]);
+      return;
+    }
+  }
+
+  // Set up a second canvas in order to resize image
   let bufferCanvas = document.createElement("canvas");
   let bufferContext = bufferCanvas.getContext("2d");
   bufferCanvas.width = imageLength;
@@ -166,6 +190,23 @@ export const drawOutput = (d, i, g, range) => {
   
   let imageDataURL = largeCanvas.toDataURL();
   d3.select(image).attr('xlink:href', imageDataURL);
+
+  if (imageLength > 1 && d.output && typeof d.output === 'object') {
+    let layerMinMax = (cnnLayerMinMax || [])[curLayerIndex] || {};
+    let minVal = Number(layerMinMax.min);
+    let maxVal = Number(layerMinMax.max);
+    let cacheKey = [
+      d.type,
+      d.layerName,
+      d.index,
+      Number(range),
+      Number.isFinite(minVal) ? minVal : 'na',
+      Number.isFinite(maxVal) ? maxVal : 'na'
+    ].join('|');
+    let cachedEntries = outputImageCache.get(d.output) || {};
+    cachedEntries[cacheKey] = imageDataURL;
+    outputImageCache.set(d.output, cachedEntries);
+  }
 
   // Destory the buffer canvas
   bufferCanvas.remove();

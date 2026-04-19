@@ -12,7 +12,7 @@ const publicUrl = process.env.PUBLIC_URL || '';
 export default {
 	input: 'src/main.js',
 	output: {
-		sourcemap: true,
+		sourcemap: !production,
 		format: 'iife',
 		name: 'app',
 		file: 'public/bundle.js'

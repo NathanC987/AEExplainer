@@ -111,18 +111,20 @@ export const moveLayerX = (arg) => {
       .duration(duration)
       .attr('x', targetX + nodeLength / 2);
     
-    if (opacity !== undefined && i !== specialIndex) {
+    if (opacity !== undefined) {
+      let targetOpacity = (i === specialIndex) ? 1 : opacity;
+
       d3.select(g[i])
         .select('image')
-        .style('opacity', opacity);
+        .style('opacity', targetOpacity);
 
       d3.select(g[i])
         .select('rect.map-border')
-        .style('opacity', opacity);
+        .style('opacity', targetOpacity);
 
       d3.select(g[i])
         .select('rect.bounding')
-        .style('opacity', opacity);
+        .style('opacity', targetOpacity);
     }
   });
   
