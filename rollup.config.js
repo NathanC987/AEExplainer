@@ -8,6 +8,7 @@ import replace from '@rollup/plugin-replace';
 
 const production = !process.env.ROLLUP_WATCH;
 const publicUrl = process.env.PUBLIC_URL || '';
+const buildVersion = process.env.BUILD_VERSION || '';
 
 export default {
 	input: 'src/main.js',
@@ -30,7 +31,8 @@ export default {
 
 		replace({
 			preventAssignment: true,
-			PUBLIC_URL: production ? publicUrl : ''
+			PUBLIC_URL: production ? publicUrl : '',
+			BUILD_VERSION: JSON.stringify(buildVersion)
 		}),
 
 		// If you have external dependencies installed from

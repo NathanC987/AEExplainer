@@ -2,6 +2,8 @@
 set -euo pipefail
 
 REPO_NAME="${1:-AEExplainer}"
+COMMIT_SHA="$(git rev-parse --short HEAD)"
+DEPLOY_VERSION="$(date +%s)-${COMMIT_SHA}"
 
 # Avoid repeated SSH passphrase prompts during gh-pages publish.
 if ! ssh-add -l >/dev/null 2>&1; then
@@ -12,7 +14,7 @@ if ! ssh-add -l 2>/dev/null | grep -q "id_ed25519"; then
 	ssh-add ~/.ssh/id_ed25519
 fi
 
-PUBLIC_URL="/${REPO_NAME}" npm run build
+PUBLIC_URL="/${REPO_NAME}" BUILD_VERSION="${DEPLOY_VERSION}" npm run build
 
 mkdir -p ./dist
 cp ./public/index.html ./dist/index.html
@@ -20,13 +22,19 @@ cp -r ./public/assets ./dist
 cp -r ./public/bundle* ./dist
 cp -r ./public/global.css ./dist
 
+# Cache-bust top-level entry assets so every deployment serves fresh files.
+sed -i \
+	-e "s|href=\"global.css\"|href=\"global.css?v=${DEPLOY_VERSION}\"|g" \
+	-e "s|href=\"bundle.css\"|href=\"bundle.css?v=${DEPLOY_VERSION}\"|g" \
+	-e "s|src=\"bundle.js\"|src=\"bundle.js?v=${DEPLOY_VERSION}\"|g" \
+	./dist/index.html
+
 # Ensure GitHub Pages serves static files as-is.
 touch ./dist/.nojekyll
 
 # Optional SPA fallback for direct deep-link visits.
 cp ./dist/index.html ./dist/404.html
 
-COMMIT_SHA="$(git rev-parse --short HEAD)"
 DEPLOY_DIR="$(mktemp -d)"
 cleanup() {
 	git worktree remove "${DEPLOY_DIR}" --force >/dev/null 2>&1 || true

@@ -247,6 +247,14 @@
   let reconMetrics = { mse: 0, mae: 0, psnr: 0 };
   let latentReconMap = null;
 
+  const buildVersion = BUILD_VERSION;
+  const withBuildVersion = (url) => {
+    if (!buildVersion) {
+      return url;
+    }
+    return url.includes('?') ? `${url}&v=${buildVersion}` : `${url}?v=${buildVersion}`;
+  };
+
   const normalizeOverviewCnn = (rawCnn) => {
     let normalized = rawCnn;
 
@@ -601,7 +609,7 @@
     for (let i = 0; i < filesToTry.length; i++) {
       let filePath = filesToTry[i];
       try {
-        let response = await fetch(filePath);
+        let response = await fetch(withBuildVersion(filePath));
         if (!response.ok) {
           continue;
         }
@@ -2224,7 +2232,7 @@
     
     console.time('Construct cnn');
     try {
-      model = await loadTrainedModel('PUBLIC_URL/assets/data/autoencoder-model.json');
+      model = await loadTrainedModel(withBuildVersion('PUBLIC_URL/assets/data/autoencoder-model.json'));
       if (!isAutoencoderModel(model)) {
         throw new Error('autoencoder-model.json is present but is not a CAE architecture.');
       }
